@@ -1,23 +1,22 @@
 import React from 'react';
 import { View, ViewStyle, StyleSheet } from 'react-native';
-import { colors } from '../../theme/tokens';
+import { colors, radii } from '../../theme/tokens';
 
 interface PanelProps {
   children: React.ReactNode;
   style?: ViewStyle;
 }
 
-/** Dark panel matching web app's .panel class */
 export function Panel({ children, style }: PanelProps) {
   return <View style={[styles.panel, style]}>{children}</View>;
 }
 
 const styles = StyleSheet.create({
   panel: {
-    backgroundColor: colors.panelBg,
+    backgroundColor: colors.bg,
     borderWidth: 1,
-    borderColor: colors.borderSubtle,
-    borderRadius: 0, // terminal aesthetic — sharp corners
+    borderColor: colors.border,
+    borderRadius: radii.lg,
     padding: 16,
   },
 });

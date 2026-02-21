@@ -1,177 +1,280 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import React, { useState, useMemo } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, fontSizes } from '../theme/tokens';
+import { colors, radii } from '../theme/tokens';
 import { fonts } from '../theme/fonts';
 import { Panel } from '../components/ui/Panel';
-import { HudCorners } from '../components/ui/HudCorners';
+import { InputField } from '../components/ui/InputField';
+import { TradeButton } from '../components/ui/TradeButton';
+import { FilterPill } from '../components/ui/FilterPill';
 import { useMWA } from '../hooks/useMWA';
 
+const LEVERAGE_OPTIONS = ['1x', '2x', '5x', '10x', '20x'];
+
 export function TradeScreen() {
-  const { connected, publicKey, connect, connecting } = useMWA();
+  const { connected } = useMWA();
+  const [direction, setDirection] = useState<'long' | 'short'>('long');
+  const [size, setSize] = useState('');
+  const [leverage, setLeverage] = useState('5x');
+  const price = 148.32; // mock
+
+  const orderSummary = useMemo(() => {
+    const sizeNum = parseFloat(size) || 0;
+    const levNum = parseInt(leverage) || 5;
+    const margin = sizeNum * price / levNum;
+    const liqDistance = price / levNum;
+    const liqPrice = direction === 'long' ? price - liqDistance : price + liqDistance;
+    const fee = sizeNum * price * 0.001;
+    return { entry: price, size: sizeNum, margin, liqPrice, fee };
+  }, [size, leverage, direction, price]);
+
+  const isLong = direction === 'long';
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>PERCOLATOR</Text>
-        <View style={styles.statusDot} />
+        <Text style={styles.title}>SOL-PERP</Text>
+        <Text style={[styles.price, { color: colors.long }]}>
+          ${price.toFixed(2)} ↑
+        </Text>
       </View>
 
-      {/* Wallet */}
-      {!connected ? (
-        <HudCorners>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Mini Chart Placeholder */}
+        <Panel style={styles.chartPanel}>
+          <View style={styles.chartPlaceholder}>
+            <Text style={styles.chartText}>📊 Chart</Text>
+          </View>
+          <View style={styles.timeframes}>
+            {['1m', '5m', '15m', '1h', '4h', '1D'].map((tf) => (
+              <TouchableOpacity key={tf} style={styles.tfBtn} activeOpacity={0.7}>
+                <Text style={styles.tfText}>{tf}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </Panel>
+
+        {/* Direction Toggle */}
+        <View style={styles.directionToggle}>
           <TouchableOpacity
-            style={styles.connectBtn}
-            onPress={connect}
-            disabled={connecting}
-            activeOpacity={0.7}
+            style={[
+              styles.directionBtn,
+              isLong && { backgroundColor: colors.long },
+            ]}
+            onPress={() => setDirection('long')}
+            activeOpacity={0.8}
           >
-            <Text style={styles.connectText}>
-              {connecting ? 'CONNECTING...' : 'CONNECT WALLET'}
+            <Text
+              style={[
+                styles.directionText,
+                isLong
+                  ? { color: '#ffffff' }
+                  : { color: colors.textMuted },
+              ]}
+            >
+              LONG ▲
             </Text>
           </TouchableOpacity>
-        </HudCorners>
-      ) : (
-        <Panel style={styles.walletPanel}>
-          <Text style={styles.walletLabel}>WALLET</Text>
-          <Text style={styles.walletAddress}>
-            {publicKey?.toBase58().slice(0, 4)}...{publicKey?.toBase58().slice(-4)}
-          </Text>
-        </Panel>
-      )}
-
-      {/* Trading placeholder */}
-      <Panel style={styles.tradePanel}>
-        <Text style={styles.sectionLabel}>TRADE</Text>
-        <View style={styles.tradeButtons}>
-          <TouchableOpacity style={[styles.tradeBtn, styles.longBtn]} activeOpacity={0.7}>
-            <Text style={styles.longText}>LONG</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.tradeBtn, styles.shortBtn]} activeOpacity={0.7}>
-            <Text style={styles.shortText}>SHORT</Text>
+          <TouchableOpacity
+            style={[
+              styles.directionBtn,
+              !isLong && { backgroundColor: colors.short },
+            ]}
+            onPress={() => setDirection('short')}
+            activeOpacity={0.8}
+          >
+            <Text
+              style={[
+                styles.directionText,
+                !isLong
+                  ? { color: '#ffffff' }
+                  : { color: colors.textMuted },
+              ]}
+            >
+              SHORT ▼
+            </Text>
           </TouchableOpacity>
         </View>
-      </Panel>
 
-      {/* Positions placeholder */}
-      <Panel style={styles.positionsPanel}>
-        <Text style={styles.sectionLabel}>POSITIONS</Text>
-        <Text style={styles.emptyText}>No open positions</Text>
-      </Panel>
+        {/* Size Input */}
+        <InputField
+          label="Size (SOL)"
+          value={size}
+          onChangeText={setSize}
+          placeholder="0.00"
+          keyboardType="decimal-pad"
+          rightAction={{ label: 'MAX', onPress: () => setSize('10.0') }}
+        />
+
+        {/* Leverage */}
+        <View style={styles.leverageSection}>
+          <Text style={styles.label}>Leverage</Text>
+          <View style={styles.leveragePills}>
+            {LEVERAGE_OPTIONS.map((lev) => (
+              <FilterPill
+                key={lev}
+                label={lev}
+                active={leverage === lev}
+                onPress={() => setLeverage(lev)}
+              />
+            ))}
+          </View>
+        </View>
+
+        {/* Order Summary */}
+        <Panel style={styles.summaryPanel}>
+          <SummaryRow label="Entry" value={`$${orderSummary.entry.toFixed(2)}`} />
+          <SummaryRow label="Size" value={`${orderSummary.size.toFixed(2)} SOL`} />
+          <SummaryRow label="Margin" value={`$${orderSummary.margin.toFixed(2)}`} />
+          <SummaryRow
+            label="Liq. Price"
+            value={`$${orderSummary.liqPrice.toFixed(2)}`}
+            valueColor={orderSummary.liqPrice > 0 ? colors.warning : colors.textMuted}
+          />
+          <SummaryRow label="Fee" value={`$${orderSummary.fee.toFixed(2)}`} />
+        </Panel>
+
+        {/* CTA */}
+        <TradeButton
+          label={`OPEN ${direction.toUpperCase()} POSITION`}
+          direction={direction}
+          fullWidth
+          disabled={!connected || orderSummary.size === 0}
+        />
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
+function SummaryRow({
+  label,
+  value,
+  valueColor,
+}: {
+  label: string;
+  value: string;
+  valueColor?: string;
+}) {
+  return (
+    <View style={summaryStyles.row}>
+      <Text style={summaryStyles.label}>{label}</Text>
+      <Text style={[summaryStyles.value, valueColor ? { color: valueColor } : undefined]}>
+        {value}
+      </Text>
+    </View>
+  );
+}
+
+const summaryStyles = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 4,
+  },
+  label: {
+    fontFamily: fonts.body,
+    fontSize: 12,
+    color: colors.textMuted,
+  },
+  value: {
+    fontFamily: fonts.mono,
+    fontSize: 13,
+    color: colors.text,
+    fontVariant: ['tabular-nums'],
+  },
+});
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.bg,
-    padding: 16,
-    gap: 12,
+    backgroundColor: colors.bgVoid,
   },
   header: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 4,
-  },
-  title: {
-    fontFamily: fonts.mono,
-    fontSize: fontSizes.md,
-    fontWeight: '700',
-    color: colors.text,
-    letterSpacing: 2,
-  },
-  statusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.accent,
-  },
-  connectBtn: {
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: 'rgba(153,69,255,0.3)',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    alignItems: 'center',
-  },
-  connectText: {
-    fontFamily: fonts.mono,
-    fontSize: fontSizes.sm,
-    fontWeight: '600',
-    color: colors.accent,
-    letterSpacing: 1.5,
-  },
-  walletPanel: {
-    flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
   },
-  walletLabel: {
+  title: {
     fontFamily: fonts.display,
-    fontSize: fontSizes.xs,
-    fontWeight: '600',
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  price: {
+    fontFamily: fonts.mono,
+    fontSize: 18,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
+  },
+  scroll: { flex: 1 },
+  content: {
+    padding: 16,
+    gap: 16,
+  },
+  chartPanel: { gap: 8 },
+  chartPlaceholder: {
+    height: 160,
+    backgroundColor: colors.bgInset,
+    borderRadius: radii.md,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  chartText: {
+    fontFamily: fonts.body,
+    fontSize: 14,
     color: colors.textMuted,
+  },
+  timeframes: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  tfBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: radii.sm,
+    backgroundColor: colors.bgElevated,
+  },
+  tfText: {
+    fontFamily: fonts.mono,
+    fontSize: 11,
+    color: colors.textSecondary,
+  },
+  directionToggle: {
+    flexDirection: 'row',
+    height: 48,
+    borderRadius: radii.md,
+    backgroundColor: colors.bgElevated,
+    overflow: 'hidden',
+  },
+  directionBtn: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  directionText: {
+    fontFamily: fonts.display,
+    fontSize: 14,
+    fontWeight: '700',
     letterSpacing: 1,
   },
-  walletAddress: {
-    fontFamily: fonts.mono,
-    fontSize: fontSizes.sm,
-    color: colors.accent,
+  leverageSection: { gap: 8 },
+  label: {
+    fontFamily: fonts.body,
+    fontSize: 14,
+    color: colors.textSecondary,
   },
-  tradePanel: {
-    flex: 1,
-    gap: 12,
-  },
-  sectionLabel: {
-    fontFamily: fonts.display,
-    fontSize: fontSizes.xs,
-    fontWeight: '600',
-    color: colors.textMuted,
-    letterSpacing: 1.5,
-    textTransform: 'uppercase',
-  },
-  tradeButtons: {
+  leveragePills: {
     flexDirection: 'row',
-    gap: 8,
   },
-  tradeBtn: {
-    flex: 1,
-    paddingVertical: 14,
-    alignItems: 'center',
-    borderWidth: 1,
-  },
-  longBtn: {
-    borderColor: 'rgba(20,241,149,0.3)',
-    backgroundColor: 'rgba(20,241,149,0.06)',
-  },
-  shortBtn: {
-    borderColor: 'rgba(255,59,92,0.3)',
-    backgroundColor: 'rgba(255,59,92,0.06)',
-  },
-  longText: {
-    fontFamily: fonts.mono,
-    fontSize: fontSizes.sm,
-    fontWeight: '700',
-    color: colors.long,
-    letterSpacing: 2,
-  },
-  shortText: {
-    fontFamily: fonts.mono,
-    fontSize: fontSizes.sm,
-    fontWeight: '700',
-    color: colors.short,
-    letterSpacing: 2,
-  },
-  positionsPanel: {
-    flex: 1,
-    gap: 8,
-  },
-  emptyText: {
-    fontFamily: fonts.mono,
-    fontSize: fontSizes.sm,
-    color: colors.textMuted,
+  summaryPanel: {
+    backgroundColor: colors.bgInset,
+    gap: 2,
   },
 });

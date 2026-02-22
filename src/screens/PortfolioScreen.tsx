@@ -1,70 +1,45 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  TouchableOpacity,
+  RefreshControl,
+  ActivityIndicator,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, radii } from '../theme/tokens';
 import { fonts } from '../theme/fonts';
 import { FilterPill } from '../components/ui/FilterPill';
-
-interface Position {
-  id: string;
-  market: string;
-  direction: 'long' | 'short';
-  leverage: number;
-  entryPrice: number;
-  currentPrice: number;
-  size: number;
-  liqPrice: number;
-}
-
-const MOCK_POSITIONS: Position[] = [
-  {
-    id: '1',
-    market: 'SOL-PERP',
-    direction: 'long',
-    leverage: 5,
-    entryPrice: 141.2,
-    currentPrice: 148.32,
-    size: 5,
-    liqPrice: 113.0,
-  },
-  {
-    id: '2',
-    market: 'ETH-PERP',
-    direction: 'short',
-    leverage: 10,
-    entryPrice: 2890.0,
-    currentPrice: 2847.1,
-    size: 1,
-    liqPrice: 3179.0,
-  },
-];
+import { ErrorBanner } from '../components/ui/ErrorBanner';
+import { useMWA } from '../hooks/useMWA';
+import { usePositions, type Position } from '../hooks/usePositions';
 
 function PositionCard({ position }: { position: Position }) {
   const isLong = position.direction === 'long';
-  const pnlRaw = isLong
-    ? (position.currentPrice - position.entryPrice) * position.size
-    : (position.entryPrice - position.currentPrice) * position.size;
-  const pnlPct = isLong
-    ? ((position.currentPrice - position.entryPrice) / position.entryPrice) * 100
-    : ((position.entryPrice - position.currentPrice) / position.entryPrice) * 100;
-  const pnlPositive = pnlRaw >= 0;
+  const pnlPositive = position.pnl >= 0;
   const pnlColor = pnlPositive ? colors.long : colors.short;
 
-  // Liquidation proximity warning
+  // Liquidation proximity
   const liqDistance = isLong
     ? (position.currentPrice - position.liqPrice) / position.currentPrice
     : (position.liqPrice - position.currentPrice) / position.currentPrice;
-  const liqWarning = liqDistance < 0.2;
-  const liqCritical = liqDistance < 0.1;
+  const liqWarning = liqDistance > 0 && liqDistance < 0.2;
+  const liqCritical = liqDistance > 0 && liqDistance < 0.1;
+
+  const sizeLabel = position.size < 1
+    ? position.size.toFixed(4)
+    : position.size.toFixed(2);
 
   return (
     <View style={[styles.posCard, { borderLeftColor: isLong ? colors.long : colors.short }]}>
       {/* Header */}
       <View style={styles.posHeader}>
-        <Text style={styles.posMarket}>{position.market}</Text>
+        <Text style={styles.posMarket}>{position.symbol}</Text>
         <View style={styles.posDirection}>
           <Text style={[styles.posDirText, { color: isLong ? colors.long : colors.short }]}>
-            {position.direction.toUpperCase()} {position.leverage}x
+            {position.direction.toUpperCase()} {position.leverage.toFixed(1)}x
           </Text>
         </View>
       </View>
@@ -76,7 +51,7 @@ function PositionCard({ position }: { position: Position }) {
           <Text style={styles.posStatValue}>${position.entryPrice.toFixed(2)}</Text>
         </View>
         <View style={styles.posStatCol}>
-          <Text style={styles.posStatLabel}>Current</Text>
+          <Text style={styles.posStatLabel}>Mark</Text>
           <Text style={[styles.posStatValue, { color: pnlColor }]}>
             ${position.currentPrice.toFixed(2)}
           </Text>
@@ -84,22 +59,40 @@ function PositionCard({ position }: { position: Position }) {
         <View style={styles.posStatCol}>
           <Text style={styles.posStatLabel}>PnL</Text>
           <Text style={[styles.posPnl, { color: pnlColor }]}>
-            {pnlPositive ? '+' : ''}${pnlRaw.toFixed(2)} ({pnlPositive ? '+' : ''}{pnlPct.toFixed(1)}%)
+            {pnlPositive ? '+' : ''}${position.pnl.toFixed(2)}
+            {'\n'}
+            {pnlPositive ? '+' : ''}{position.pnlPercent.toFixed(1)}%
           </Text>
         </View>
       </View>
 
-      {/* Liq price */}
-      <View style={styles.posLiqRow}>
-        <Text style={styles.posStatLabel}>Liq:</Text>
-        <Text
-          style={[
-            styles.posLiqValue,
-            { color: liqCritical ? colors.short : liqWarning ? colors.warning : colors.textMuted },
-          ]}
-        >
-          ${position.liqPrice.toFixed(2)}
-        </Text>
+      {/* Size + Liq row */}
+      <View style={styles.posBottomRow}>
+        <View style={styles.posStatCol}>
+          <Text style={styles.posStatLabel}>Size</Text>
+          <Text style={styles.posStatValue}>{sizeLabel}</Text>
+        </View>
+        <View style={styles.posStatCol}>
+          <Text style={styles.posStatLabel}>Collateral</Text>
+          <Text style={styles.posStatValue}>${position.capital.toFixed(2)}</Text>
+        </View>
+        <View style={styles.posStatCol}>
+          <Text style={styles.posStatLabel}>Liq. Price</Text>
+          <Text
+            style={[
+              styles.posLiqValue,
+              {
+                color: liqCritical
+                  ? colors.short
+                  : liqWarning
+                  ? colors.warning
+                  : colors.textMuted,
+              },
+            ]}
+          >
+            {position.liqPrice > 0 ? `$${position.liqPrice.toFixed(2)}` : '—'}
+          </Text>
+        </View>
       </View>
 
       {/* Actions */}
@@ -118,9 +111,9 @@ function PositionCard({ position }: { position: Position }) {
       {/* Liquidation warning */}
       {liqWarning && (
         <View style={[styles.liqWarning, liqCritical && styles.liqCritical]}>
-          <Text style={styles.liqWarningText}>
-            ⚠ Liquidation at ${position.liqPrice.toFixed(2)}
-            {liqCritical ? ' — CRITICAL' : ''}
+          <Text style={[styles.liqWarningText, liqCritical && { color: colors.short }]}>
+            ⚠ {liqCritical ? 'CRITICAL — ' : ''}Liquidation at $
+            {position.liqPrice.toFixed(2)}
           </Text>
         </View>
       )}
@@ -128,64 +121,113 @@ function PositionCard({ position }: { position: Position }) {
   );
 }
 
+function EmptyPortfolio() {
+  return (
+    <View style={styles.emptyContainer}>
+      <Text style={styles.emptyIcon}>📂</Text>
+      <Text style={styles.emptyTitle}>No open positions</Text>
+      <Text style={styles.emptySubtitle}>
+        Open a trade to see your positions here.
+      </Text>
+    </View>
+  );
+}
+
 export function PortfolioScreen() {
   const [tab, setTab] = useState<'open' | 'history' | 'orders'>('open');
+  const { connected, publicKey } = useMWA();
 
-  const totalPnl = MOCK_POSITIONS.reduce((sum, p) => {
-    const isLong = p.direction === 'long';
-    const pnl = isLong
-      ? (p.currentPrice - p.entryPrice) * p.size
-      : (p.entryPrice - p.currentPrice) * p.size;
-    return sum + pnl;
-  }, 0);
-  const totalPnlPct = 12.3; // mock
+  const { positions, loading, error, refresh } = usePositions(
+    connected && publicKey ? publicKey.toBase58() : null,
+  );
+
+  // Summary stats
+  const totalPnl = positions.reduce((sum, p) => sum + p.pnl, 0);
+  const totalCapital = positions.reduce((sum, p) => sum + p.capital, 0);
+  const totalPnlPct = totalCapital > 0 ? (totalPnl / totalCapital) * 100 : 0;
   const pnlPositive = totalPnl >= 0;
+
+  const openPositions = positions.filter((p) => p.size !== 0);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header with total PnL */}
       <View style={styles.header}>
         <Text style={styles.title}>Portfolio</Text>
-        <View style={styles.pnlHeader}>
-          <Text
-            style={[
-              styles.totalPnl,
-              { color: pnlPositive ? colors.long : colors.short },
-            ]}
-          >
-            {pnlPositive ? '+' : ''}${totalPnl.toFixed(2)}
-          </Text>
-          <Text
-            style={[
-              styles.totalPnlPct,
-              { color: pnlPositive ? colors.long : colors.short },
-            ]}
-          >
-            {pnlPositive ? '+' : ''}{totalPnlPct.toFixed(1)}%
-          </Text>
-        </View>
+        {connected ? (
+          <View style={styles.pnlHeader}>
+            {loading && positions.length === 0 ? (
+              <ActivityIndicator color={colors.accent} />
+            ) : (
+              <>
+                <Text
+                  style={[
+                    styles.totalPnl,
+                    { color: pnlPositive ? colors.long : colors.short },
+                  ]}
+                >
+                  {pnlPositive ? '+' : ''}${totalPnl.toFixed(2)}
+                </Text>
+                <Text
+                  style={[
+                    styles.totalPnlPct,
+                    { color: pnlPositive ? colors.long : colors.short },
+                  ]}
+                >
+                  {pnlPositive ? '+' : ''}{totalPnlPct.toFixed(1)}%
+                </Text>
+              </>
+            )}
+          </View>
+        ) : (
+          <Text style={styles.notConnected}>Connect wallet</Text>
+        )}
       </View>
+
+      {error && (
+        <ErrorBanner
+          message={error}
+          onRetry={refresh}
+        />
+      )}
 
       {/* Tabs */}
       <View style={styles.tabs}>
         <FilterPill
-          label={`Open (${MOCK_POSITIONS.length})`}
+          label={`Open (${openPositions.length})`}
           active={tab === 'open'}
           onPress={() => setTab('open')}
         />
-        <FilterPill label="History" active={tab === 'history'} onPress={() => setTab('history')} />
-        <FilterPill label="Orders" active={tab === 'orders'} onPress={() => setTab('orders')} />
+        <FilterPill
+          label="History"
+          active={tab === 'history'}
+          onPress={() => setTab('history')}
+        />
+        <FilterPill
+          label="Orders"
+          active={tab === 'orders'}
+          onPress={() => setTab('orders')}
+        />
       </View>
 
-      {/* Position List */}
+      {/* Position list */}
       <FlatList
-        data={tab === 'open' ? MOCK_POSITIONS : []}
+        data={tab === 'open' ? openPositions : []}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={loading && positions.length > 0}
+            onRefresh={refresh}
+            tintColor={colors.accent}
+          />
+        }
         renderItem={({ item }) => <PositionCard position={item} />}
         ListEmptyComponent={
-          <Text style={styles.emptyText}>No {tab} positions</Text>
+          !loading ? (
+            <EmptyPortfolio />
+          ) : null
         }
       />
     </SafeAreaView>
@@ -224,21 +266,41 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontVariant: ['tabular-nums'],
   },
+  notConnected: {
+    fontFamily: fonts.body,
+    fontSize: 13,
+    color: colors.textMuted,
+  },
   tabs: {
     flexDirection: 'row',
     paddingHorizontal: 16,
     paddingBottom: 12,
+    gap: 8,
   },
   list: {
     padding: 16,
+    paddingBottom: 32,
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    paddingTop: 60,
     gap: 8,
   },
-  emptyText: {
+  emptyIcon: {
+    fontSize: 36,
+  },
+  emptyTitle: {
+    fontFamily: fonts.display,
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  emptySubtitle: {
     fontFamily: fonts.body,
-    fontSize: 14,
+    fontSize: 13,
     color: colors.textMuted,
     textAlign: 'center',
-    marginTop: 40,
+    paddingHorizontal: 32,
   },
   // Position Card
   posCard: {
@@ -273,6 +335,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
   },
+  posBottomRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
   posStatCol: { gap: 2 },
   posStatLabel: {
     fontFamily: fonts.body,
@@ -287,18 +353,13 @@ const styles = StyleSheet.create({
   },
   posPnl: {
     fontFamily: fonts.mono,
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
     fontVariant: ['tabular-nums'],
   },
-  posLiqRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
   posLiqValue: {
     fontFamily: fonts.mono,
-    fontSize: 12,
+    fontSize: 14,
     fontVariant: ['tabular-nums'],
   },
   posActions: {
@@ -330,14 +391,14 @@ const styles = StyleSheet.create({
     color: colors.short,
   },
   liqWarning: {
-    backgroundColor: colors.warningSubtle,
+    backgroundColor: 'rgba(234, 179, 8, 0.08)',
     borderLeftWidth: 2,
     borderLeftColor: colors.warning,
     borderRadius: radii.sm,
     padding: 8,
   },
   liqCritical: {
-    backgroundColor: colors.shortSubtle,
+    backgroundColor: 'rgba(239, 68, 68, 0.08)',
     borderLeftColor: colors.short,
   },
   liqWarningText: {

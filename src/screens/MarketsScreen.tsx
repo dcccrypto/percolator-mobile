@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
 import { colors, radii } from '../theme/tokens';
 import { fonts } from '../theme/fonts';
 import { Panel } from '../components/ui/Panel';
@@ -17,6 +18,7 @@ import { TradeButton } from '../components/ui/TradeButton';
 import { MarketCardSkeleton } from '../components/ui/SkeletonLoader';
 import { ErrorBanner } from '../components/ui/ErrorBanner';
 import { useMarkets } from '../hooks/useMarkets';
+import { useMarketStore } from '../store/marketStore';
 
 const FILTERS = ['Hot 🔥', 'Newest', 'Volume ↓', 'OI ↓', 'Top Gainers'];
 
@@ -36,14 +38,17 @@ function formatVolume(oi: number | null): string {
 
 function MarketCard({
   market,
+  onTrade,
 }: {
   market: {
+    slabAddress: string;
     symbol: string;
     lastPrice: number | null;
     change24h: number;
     totalOpenInterest: number | null;
     maxLeverage: number;
   };
+  onTrade: (slabAddress: string, symbol: string) => void;
 }) {
   const changeColor = market.change24h >= 0 ? colors.long : colors.short;
   const changePrefix = market.change24h >= 0 ? '+' : '';
@@ -71,8 +76,20 @@ function MarketCard({
       </View>
 
       <View style={styles.tradeRow}>
-        <TradeButton label="Long ▲" direction="long" size="sm" style={styles.tradeBtn} />
-        <TradeButton label="Short ▼" direction="short" size="sm" style={styles.tradeBtn} />
+        <TradeButton
+          label="Long ▲"
+          direction="long"
+          size="sm"
+          style={styles.tradeBtn}
+          onPress={() => onTrade(market.slabAddress, market.symbol)}
+        />
+        <TradeButton
+          label="Short ▼"
+          direction="short"
+          size="sm"
+          style={styles.tradeBtn}
+          onPress={() => onTrade(market.slabAddress, market.symbol)}
+        />
       </View>
     </Panel>
   );
@@ -83,6 +100,13 @@ export function MarketsScreen() {
   const [activeFilter, setActiveFilter] = useState('Hot 🔥');
   const { markets, loading, error, refetch } = useMarkets();
   const [refreshing, setRefreshing] = useState(false);
+  const navigation = useNavigation<any>();
+  const { setSelectedMarket } = useMarketStore();
+
+  const handleTrade = useCallback((slabAddress: string, symbol: string) => {
+    setSelectedMarket({ slabAddress, symbol });
+    navigation.navigate('Trade');
+  }, [setSelectedMarket, navigation]);
 
   const filteredMarkets = useMemo(() => {
     if (!search) return markets;
@@ -153,7 +177,7 @@ export function MarketsScreen() {
               tintColor={colors.accent}
             />
           }
-          renderItem={({ item }) => <MarketCard market={item} />}
+          renderItem={({ item }) => <MarketCard market={item} onTrade={handleTrade} />}
           ListEmptyComponent={
             <View style={styles.empty}>
               <Text style={styles.emptyText}>

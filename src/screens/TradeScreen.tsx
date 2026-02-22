@@ -1,5 +1,13 @@
-import React, { useState, useMemo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import React, { useState, useMemo, useCallback } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
+  Alert,
+  ActivityIndicator,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, radii } from '../theme/tokens';
 import { fonts } from '../theme/fonts';
@@ -7,38 +15,111 @@ import { Panel } from '../components/ui/Panel';
 import { InputField } from '../components/ui/InputField';
 import { TradeButton } from '../components/ui/TradeButton';
 import { FilterPill } from '../components/ui/FilterPill';
+import { ErrorBanner } from '../components/ui/ErrorBanner';
 import { useMWA } from '../hooks/useMWA';
+import { usePriceStream as usePriceStreamMulti } from '../hooks/usePriceStream';
+import { useTrade } from '../hooks/useTrade';
+import { useMarketStore } from '../store/marketStore';
 
 const LEVERAGE_OPTIONS = ['1x', '2x', '5x', '10x', '20x'];
 
 export function TradeScreen() {
-  const { connected } = useMWA();
+  const { connected, publicKey } = useMWA();
+  const { selectedMarket, userIdx } = useMarketStore();
+  const slabAddress = selectedMarket?.slabAddress;
+  const symbol = selectedMarket?.symbol ?? 'SOL-PERP';
+  const { prices } = usePriceStreamMulti(slabAddress ? [slabAddress] : []);
+  const livePrice = slabAddress ? prices[slabAddress]?.price ?? null : null;
+  const { submitting, error: tradeError, submitTrade } = useTrade();
+
   const [direction, setDirection] = useState<'long' | 'short'>('long');
   const [size, setSize] = useState('');
   const [leverage, setLeverage] = useState('5x');
-  const price = 148.32; // mock
+
+  // Use live streamed price, fall back to 0 while loading
+  const price = livePrice ?? 0;
+  const priceReady = price > 0;
 
   const orderSummary = useMemo(() => {
     const sizeNum = parseFloat(size) || 0;
     const levNum = parseInt(leverage) || 5;
-    const margin = sizeNum * price / levNum;
+    // sizeUsd = position notional in USD
+    const sizeUsd = sizeNum * price;
+    const margin = sizeUsd / levNum;
+    // Simplified liq estimate: entry ± entry/leverage
     const liqDistance = price / levNum;
-    const liqPrice = direction === 'long' ? price - liqDistance : price + liqDistance;
-    const fee = sizeNum * price * 0.001;
-    return { entry: price, size: sizeNum, margin, liqPrice, fee };
+    const liqPrice =
+      direction === 'long' ? price - liqDistance : price + liqDistance;
+    const fee = sizeUsd * 0.001; // 0.1% fee estimate
+    return { entry: price, sizeTokens: sizeNum, sizeUsd, margin, liqPrice, fee };
   }, [size, leverage, direction, price]);
 
   const isLong = direction === 'long';
+
+  const canTrade =
+    connected &&
+    priceReady &&
+    orderSummary.sizeTokens > 0 &&
+    !!slabAddress &&
+    !submitting;
+
+  const handleOpenPosition = useCallback(async () => {
+    if (!canTrade || !slabAddress) return;
+
+    Alert.alert(
+      `Confirm ${direction.toUpperCase()} Position`,
+      [
+        `Market: ${symbol}`,
+        `Size: ${orderSummary.sizeUsd.toFixed(2)} USD`,
+        `Leverage: ${leverage}`,
+        `Entry ~$${price.toFixed(2)}`,
+        `Liq ~$${orderSummary.liqPrice.toFixed(2)}`,
+        `Fee ~$${orderSummary.fee.toFixed(4)}`,
+      ].join('\n'),
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Confirm',
+          style: isLong ? 'default' : 'destructive',
+          onPress: async () => {
+            const result = await submitTrade({
+              slabAddress,
+              userIdx,
+              sizeUsd: orderSummary.sizeUsd,
+              direction,
+            });
+
+            if (result) {
+              Alert.alert(
+                '✅ Position Opened',
+                `Tx: ${result.signature.slice(0, 16)}…`,
+                [{ text: 'OK' }],
+              );
+              setSize(''); // reset form
+            }
+          },
+        },
+      ],
+    );
+  }, [canTrade, slabAddress, direction, orderSummary, leverage, price, symbol, userIdx, submitTrade, isLong]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>SOL-PERP</Text>
-        <Text style={[styles.price, { color: colors.long }]}>
-          ${price.toFixed(2)} ↑
-        </Text>
+        <Text style={styles.title}>{symbol}</Text>
+        {priceReady ? (
+          <Text style={[styles.price, { color: colors.long }]}>
+            ${price.toFixed(price < 1 ? 6 : 2)} ↑
+          </Text>
+        ) : (
+          <ActivityIndicator color={colors.accent} size="small" />
+        )}
       </View>
+
+      {tradeError && (
+        <ErrorBanner message={tradeError} />
+      )}
 
       <ScrollView
         style={styles.scroll}
@@ -49,6 +130,9 @@ export function TradeScreen() {
         <Panel style={styles.chartPanel}>
           <View style={styles.chartPlaceholder}>
             <Text style={styles.chartText}>📊 Chart</Text>
+            {!priceReady && (
+              <Text style={styles.chartSubText}>Loading price…</Text>
+            )}
           </View>
           <View style={styles.timeframes}>
             {['1m', '5m', '15m', '1h', '4h', '1D'].map((tf) => (
@@ -72,9 +156,7 @@ export function TradeScreen() {
             <Text
               style={[
                 styles.directionText,
-                isLong
-                  ? { color: '#ffffff' }
-                  : { color: colors.textMuted },
+                isLong ? { color: '#ffffff' } : { color: colors.textMuted },
               ]}
             >
               LONG ▲
@@ -91,9 +173,7 @@ export function TradeScreen() {
             <Text
               style={[
                 styles.directionText,
-                !isLong
-                  ? { color: '#ffffff' }
-                  : { color: colors.textMuted },
+                !isLong ? { color: '#ffffff' } : { color: colors.textMuted },
               ]}
             >
               SHORT ▼
@@ -103,12 +183,15 @@ export function TradeScreen() {
 
         {/* Size Input */}
         <InputField
-          label="Size (SOL)"
+          label={`Size (${symbol.split('-')[0]})`}
           value={size}
           onChangeText={setSize}
           placeholder="0.00"
           keyboardType="decimal-pad"
-          rightAction={{ label: 'MAX', onPress: () => setSize('10.0') }}
+          rightAction={{
+            label: 'MAX',
+            onPress: () => setSize('10.0'), // TODO: derive from wallet balance
+          }}
         />
 
         {/* Leverage */}
@@ -128,24 +211,77 @@ export function TradeScreen() {
 
         {/* Order Summary */}
         <Panel style={styles.summaryPanel}>
-          <SummaryRow label="Entry" value={`$${orderSummary.entry.toFixed(2)}`} />
-          <SummaryRow label="Size" value={`${orderSummary.size.toFixed(2)} SOL`} />
-          <SummaryRow label="Margin" value={`$${orderSummary.margin.toFixed(2)}`} />
+          <SummaryRow
+            label="Entry"
+            value={priceReady ? `$${orderSummary.entry.toFixed(2)}` : '…'}
+          />
+          <SummaryRow
+            label="Notional"
+            value={
+              orderSummary.sizeUsd > 0
+                ? `$${orderSummary.sizeUsd.toFixed(2)}`
+                : '—'
+            }
+          />
+          <SummaryRow
+            label="Margin"
+            value={
+              orderSummary.margin > 0
+                ? `$${orderSummary.margin.toFixed(2)}`
+                : '—'
+            }
+          />
           <SummaryRow
             label="Liq. Price"
-            value={`$${orderSummary.liqPrice.toFixed(2)}`}
-            valueColor={orderSummary.liqPrice > 0 ? colors.warning : colors.textMuted}
+            value={
+              orderSummary.liqPrice > 0
+                ? `$${orderSummary.liqPrice.toFixed(2)}`
+                : '—'
+            }
+            valueColor={
+              orderSummary.liqPrice > 0 ? colors.warning : colors.textMuted
+            }
           />
-          <SummaryRow label="Fee" value={`$${orderSummary.fee.toFixed(2)}`} />
+          <SummaryRow
+            label="Est. Fee"
+            value={
+              orderSummary.fee > 0 ? `$${orderSummary.fee.toFixed(4)}` : '—'
+            }
+          />
         </Panel>
+
+        {/* Wallet not connected hint */}
+        {!connected && (
+          <Text style={styles.hint}>Connect your wallet to trade.</Text>
+        )}
+
+        {!slabAddress && connected && (
+          <Text style={styles.hint}>
+            Select a market from the Markets tab to trade.
+          </Text>
+        )}
 
         {/* CTA */}
         <TradeButton
-          label={`OPEN ${direction.toUpperCase()} POSITION`}
+          label={
+            submitting
+              ? 'Signing…'
+              : `OPEN ${direction.toUpperCase()} POSITION`
+          }
           direction={direction}
           fullWidth
-          disabled={!connected || orderSummary.size === 0}
+          disabled={!canTrade}
+          onPress={handleOpenPosition}
         />
+
+        {submitting && (
+          <View style={styles.signingRow}>
+            <ActivityIndicator color={colors.accent} size="small" />
+            <Text style={styles.signingText}>
+              Waiting for wallet signature…
+            </Text>
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -163,7 +299,12 @@ function SummaryRow({
   return (
     <View style={summaryStyles.row}>
       <Text style={summaryStyles.label}>{label}</Text>
-      <Text style={[summaryStyles.value, valueColor ? { color: valueColor } : undefined]}>
+      <Text
+        style={[
+          summaryStyles.value,
+          valueColor ? { color: valueColor } : undefined,
+        ]}
+      >
         {value}
       </Text>
     </View>
@@ -217,6 +358,7 @@ const styles = StyleSheet.create({
   content: {
     padding: 16,
     gap: 16,
+    paddingBottom: 32,
   },
   chartPanel: { gap: 8 },
   chartPlaceholder: {
@@ -225,10 +367,16 @@ const styles = StyleSheet.create({
     borderRadius: radii.md,
     justifyContent: 'center',
     alignItems: 'center',
+    gap: 4,
   },
   chartText: {
     fontFamily: fonts.body,
     fontSize: 14,
+    color: colors.textMuted,
+  },
+  chartSubText: {
+    fontFamily: fonts.body,
+    fontSize: 11,
     color: colors.textMuted,
   },
   timeframes: {
@@ -272,9 +420,30 @@ const styles = StyleSheet.create({
   },
   leveragePills: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
   },
   summaryPanel: {
     backgroundColor: colors.bgInset,
     gap: 2,
+  },
+  hint: {
+    fontFamily: fonts.body,
+    fontSize: 13,
+    color: colors.textMuted,
+    textAlign: 'center',
+    paddingHorizontal: 16,
+  },
+  signingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 8,
+  },
+  signingText: {
+    fontFamily: fonts.body,
+    fontSize: 13,
+    color: colors.textMuted,
   },
 });

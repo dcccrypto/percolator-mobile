@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   StyleSheet,
   FlatList,
   TouchableOpacity,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, radii } from '../theme/tokens';
@@ -13,59 +14,62 @@ import { fonts } from '../theme/fonts';
 import { Panel } from '../components/ui/Panel';
 import { FilterPill } from '../components/ui/FilterPill';
 import { TradeButton } from '../components/ui/TradeButton';
-
-interface Market {
-  id: string;
-  name: string;
-  price: string;
-  change24h: number;
-  volume: string;
-  openInterest: string;
-  oiPercent: number;
-}
-
-const MOCK_MARKETS: Market[] = [
-  { id: '1', name: 'SOL-PERP', price: '$148.32', change24h: 5.2, volume: '$2.4M', openInterest: '$1M', oiPercent: 0.7 },
-  { id: '2', name: 'ETH-PERP', price: '$2,847.10', change24h: -1.8, volume: '$890K', openInterest: '$450K', oiPercent: 0.45 },
-  { id: '3', name: 'BTC-PERP', price: '$67,420.00', change24h: 2.1, volume: '$5.1M', openInterest: '$3M', oiPercent: 0.85 },
-  { id: '4', name: 'BONK-PERP', price: '$0.00001892', change24h: 12.4, volume: '$320K', openInterest: '$180K', oiPercent: 0.35 },
-];
+import { MarketCardSkeleton } from '../components/ui/SkeletonLoader';
+import { ErrorBanner } from '../components/ui/ErrorBanner';
+import { useMarkets } from '../hooks/useMarkets';
 
 const FILTERS = ['Hot 🔥', 'Newest', 'Volume ↓', 'OI ↓', 'Top Gainers'];
 
-function MarketCard({ market }: { market: Market }) {
+function formatPrice(price: number | null): string {
+  if (price == null) return '$—.—';
+  if (price >= 1000) return `$${price.toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
+  if (price >= 1) return `$${price.toFixed(2)}`;
+  return `$${price.toPrecision(4)}`;
+}
+
+function formatVolume(oi: number | null): string {
+  if (oi == null) return '—';
+  if (oi >= 1_000_000) return `$${(oi / 1_000_000).toFixed(1)}M`;
+  if (oi >= 1000) return `$${(oi / 1000).toFixed(0)}K`;
+  return `$${oi.toFixed(0)}`;
+}
+
+function MarketCard({
+  market,
+}: {
+  market: {
+    symbol: string;
+    lastPrice: number | null;
+    change24h: number;
+    totalOpenInterest: number | null;
+    maxLeverage: number;
+  };
+}) {
   const changeColor = market.change24h >= 0 ? colors.long : colors.short;
   const changePrefix = market.change24h >= 0 ? '+' : '';
+  const oiPct = Math.min((market.totalOpenInterest ?? 0) / 5_000_000, 1);
 
   return (
     <Panel style={styles.card}>
-      {/* Row 1: Name + Price */}
       <View style={styles.cardHeader}>
-        <Text style={styles.marketName}>{market.name}</Text>
-        <Text style={styles.marketPrice}>{market.price}</Text>
+        <Text style={styles.marketName}>{market.symbol}</Text>
+        <Text style={styles.marketPrice}>{formatPrice(market.lastPrice)}</Text>
       </View>
 
-      {/* Row 2: Change + Volume */}
       <View style={styles.cardMeta}>
         <View style={[styles.changePill, { backgroundColor: changeColor + '14' }]}>
           <Text style={[styles.changeText, { color: changeColor }]}>
             {changePrefix}{market.change24h.toFixed(1)}%
           </Text>
         </View>
-        <Text style={styles.volume}>Vol: {market.volume}</Text>
+        <Text style={styles.volume}>OI: {formatVolume(market.totalOpenInterest)}</Text>
+        <Text style={styles.leverage}>{market.maxLeverage}x max</Text>
       </View>
 
-      {/* Row 3: OI bar */}
-      <View style={styles.oiRow}>
-        <View style={styles.oiBar}>
-          <View
-            style={[styles.oiFill, { width: `${market.oiPercent * 100}%` }]}
-          />
-        </View>
-        <Text style={styles.oiLabel}>OI: {market.openInterest}</Text>
+      <View style={styles.oiBar}>
+        <View style={[styles.oiFill, { width: `${oiPct * 100}%` }]} />
       </View>
 
-      {/* Row 4: Quick trade */}
       <View style={styles.tradeRow}>
         <TradeButton label="Long ▲" direction="long" size="sm" style={styles.tradeBtn} />
         <TradeButton label="Short ▼" direction="short" size="sm" style={styles.tradeBtn} />
@@ -77,15 +81,31 @@ function MarketCard({ market }: { market: Market }) {
 export function MarketsScreen() {
   const [search, setSearch] = useState('');
   const [activeFilter, setActiveFilter] = useState('Hot 🔥');
+  const { markets, loading, error, refetch } = useMarkets();
+  const [refreshing, setRefreshing] = useState(false);
+
+  const filteredMarkets = useMemo(() => {
+    if (!search) return markets;
+    const q = search.toLowerCase();
+    return markets.filter(
+      (m) => m.symbol.toLowerCase().includes(q) || m.name.toLowerCase().includes(q)
+    );
+  }, [markets, search]);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await refetch();
+    setRefreshing(false);
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      {/* Header */}
+      {error && <ErrorBanner message={error} onRetry={refetch} />}
+
       <View style={styles.header}>
         <Text style={styles.title}>Markets</Text>
       </View>
 
-      {/* Search */}
       <View style={styles.searchContainer}>
         <Text style={styles.searchIcon}>🔍</Text>
         <TextInput
@@ -98,7 +118,6 @@ export function MarketsScreen() {
         />
       </View>
 
-      {/* Filters */}
       <FlatList
         data={FILTERS}
         horizontal
@@ -115,23 +134,41 @@ export function MarketsScreen() {
         )}
       />
 
-      {/* Market List */}
-      <FlatList
-        data={MOCK_MARKETS}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.list}
-        showsVerticalScrollIndicator={false}
-        renderItem={({ item }) => <MarketCard market={item} />}
-      />
+      {loading ? (
+        <View style={styles.list}>
+          {[1, 2, 3].map((i) => (
+            <MarketCardSkeleton key={i} />
+          ))}
+        </View>
+      ) : (
+        <FlatList
+          data={filteredMarkets}
+          keyExtractor={(item) => item.slabAddress}
+          contentContainerStyle={styles.list}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor={colors.accent}
+            />
+          }
+          renderItem={({ item }) => <MarketCard market={item} />}
+          ListEmptyComponent={
+            <View style={styles.empty}>
+              <Text style={styles.emptyText}>
+                {search ? `No markets matching "${search}"` : 'No markets available'}
+              </Text>
+            </View>
+          }
+        />
+      )}
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.bgVoid,
-  },
+  container: { flex: 1, backgroundColor: colors.bgVoid },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -155,32 +192,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     gap: 8,
   },
-  searchIcon: {
-    fontSize: 14,
-  },
+  searchIcon: { fontSize: 14 },
   searchInput: {
     flex: 1,
     fontFamily: fonts.body,
     fontSize: 14,
     color: colors.text,
   },
-  filters: {
-    maxHeight: 48,
-    marginTop: 12,
-  },
-  filtersContent: {
-    paddingHorizontal: 16,
-    alignItems: 'center',
-  },
-  list: {
-    padding: 16,
-    gap: 8,
-  },
-  // Market Card
-  card: {
-    gap: 10,
-    marginBottom: 8,
-  },
+  filters: { maxHeight: 48, marginTop: 12 },
+  filtersContent: { paddingHorizontal: 16, alignItems: 'center' },
+  list: { padding: 16, gap: 8 },
+  card: { gap: 10, marginBottom: 8 },
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -220,13 +242,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.textSecondary,
   },
-  oiRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  leverage: {
+    fontFamily: fonts.mono,
+    fontSize: 11,
+    color: colors.textMuted,
   },
   oiBar: {
-    flex: 1,
     height: 4,
     borderRadius: 2,
     backgroundColor: 'rgba(255,255,255,0.06)',
@@ -237,17 +258,12 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     backgroundColor: colors.accent,
   },
-  oiLabel: {
-    fontFamily: fonts.mono,
-    fontSize: 11,
+  tradeRow: { flexDirection: 'row', gap: 8 },
+  tradeBtn: { flex: 1 },
+  empty: { alignItems: 'center', paddingTop: 40 },
+  emptyText: {
+    fontFamily: fonts.body,
+    fontSize: 14,
     color: colors.textMuted,
-    fontVariant: ['tabular-nums'],
-  },
-  tradeRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  tradeBtn: {
-    flex: 1,
   },
 });

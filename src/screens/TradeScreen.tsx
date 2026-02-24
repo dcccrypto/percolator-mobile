@@ -7,6 +7,7 @@ import {
   ScrollView,
   Alert,
   ActivityIndicator,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, radii } from '../theme/tokens';
@@ -16,8 +17,10 @@ import { InputField } from '../components/ui/InputField';
 import { TradeButton } from '../components/ui/TradeButton';
 import { FilterPill } from '../components/ui/FilterPill';
 import { ErrorBanner } from '../components/ui/ErrorBanner';
+import { MiniChart } from '../components/chart/MiniChart';
 import { useMWA } from '../hooks/useMWA';
 import { usePriceStream as usePriceStreamMulti } from '../hooks/usePriceStream';
+import { usePriceHistory } from '../hooks/usePriceHistory';
 import { useTrade } from '../hooks/useTrade';
 import { useMarketStore } from '../store/marketStore';
 
@@ -31,10 +34,13 @@ export function TradeScreen() {
   const { prices } = usePriceStreamMulti(slabAddress ? [slabAddress] : []);
   const livePrice = slabAddress ? prices[slabAddress]?.price ?? null : null;
   const { submitting, error: tradeError, submitTrade } = useTrade();
+  const { prices: priceHistory, loading: chartLoading } = usePriceHistory(slabAddress);
+  const { width: screenWidth } = useWindowDimensions();
 
   const [direction, setDirection] = useState<'long' | 'short'>('long');
   const [size, setSize] = useState('');
   const [leverage, setLeverage] = useState('5x');
+  const [selectedTf, setSelectedTf] = useState('1h');
 
   // Use live streamed price, fall back to 0 while loading
   const price = livePrice ?? 0;
@@ -126,18 +132,33 @@ export function TradeScreen() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        {/* Mini Chart Placeholder */}
+        {/* Price Chart */}
         <Panel style={styles.chartPanel}>
-          <View style={styles.chartPlaceholder}>
-            <Text style={styles.chartText}>📊 Chart</Text>
-            {!priceReady && (
-              <Text style={styles.chartSubText}>Loading price…</Text>
-            )}
-          </View>
+          <MiniChart
+            data={priceHistory}
+            width={screenWidth - 64} // 16px padding * 2 + 16px panel padding * 2
+            height={160}
+            loading={chartLoading}
+          />
           <View style={styles.timeframes}>
             {['1m', '5m', '15m', '1h', '4h', '1D'].map((tf) => (
-              <TouchableOpacity key={tf} style={styles.tfBtn} activeOpacity={0.7}>
-                <Text style={styles.tfText}>{tf}</Text>
+              <TouchableOpacity
+                key={tf}
+                style={[
+                  styles.tfBtn,
+                  selectedTf === tf && styles.tfBtnActive,
+                ]}
+                activeOpacity={0.7}
+                onPress={() => setSelectedTf(tf)}
+              >
+                <Text
+                  style={[
+                    styles.tfText,
+                    selectedTf === tf && styles.tfTextActive,
+                  ]}
+                >
+                  {tf}
+                </Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -361,24 +382,6 @@ const styles = StyleSheet.create({
     paddingBottom: 32,
   },
   chartPanel: { gap: 8 },
-  chartPlaceholder: {
-    height: 160,
-    backgroundColor: colors.bgInset,
-    borderRadius: radii.md,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 4,
-  },
-  chartText: {
-    fontFamily: fonts.body,
-    fontSize: 14,
-    color: colors.textMuted,
-  },
-  chartSubText: {
-    fontFamily: fonts.body,
-    fontSize: 11,
-    color: colors.textMuted,
-  },
   timeframes: {
     flexDirection: 'row',
     gap: 4,
@@ -389,10 +392,16 @@ const styles = StyleSheet.create({
     borderRadius: radii.sm,
     backgroundColor: colors.bgElevated,
   },
+  tfBtnActive: {
+    backgroundColor: colors.accent,
+  },
   tfText: {
     fontFamily: fonts.mono,
     fontSize: 11,
     color: colors.textSecondary,
+  },
+  tfTextActive: {
+    color: '#ffffff',
   },
   directionToggle: {
     flexDirection: 'row',

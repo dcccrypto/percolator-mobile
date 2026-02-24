@@ -104,7 +104,7 @@ export function useCreateMarket() {
             oracle: params.oracle.trim() || undefined,
             max_leverage: params.maxLeverage,
             funding_rate_bps: Math.round(params.fundingRate * 100),
-            insurance_amount: params.insurance * 1_000_000, // Convert to lamport-scale
+            insurance_amount: Math.round(params.insurance * 1_000_000), // Convert to lamport-scale (rounded to avoid fractional lamports)
             maker_fee_bps: Math.round(params.makerFee * 100),
             taker_fee_bps: Math.round(params.takerFee * 100),
             mode: params.mode,
@@ -136,6 +136,29 @@ export function useCreateMarket() {
             }
             return bytes;
           });
+
+          // Step 2a: Simulate transactions before signing to catch errors early
+          setState((s) => ({
+            ...s,
+            step: 'Simulating transaction…',
+          }));
+
+          for (let i = 0; i < txBytes.length; i++) {
+            const tx = Transaction.from(txBytes[i]);
+            const sim = await connection.simulateTransaction(tx);
+            if (sim.value.err) {
+              const logs = sim.value.logs?.join('\n') ?? '';
+              throw new Error(
+                `Transaction ${i + 1} simulation failed: ${JSON.stringify(sim.value.err)}${logs ? `\nLogs:\n${logs}` : ''}`,
+              );
+            }
+          }
+
+          // Step 2b: Sign and send via MWA
+          setState((s) => ({
+            ...s,
+            step: 'Sign in your wallet…',
+          }));
 
           const { signatures } = await signAndSend(txBytes);
 

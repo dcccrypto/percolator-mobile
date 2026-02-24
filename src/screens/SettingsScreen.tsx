@@ -1,22 +1,31 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import React, { useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
 import { colors, radii } from '../theme/tokens';
 import { fonts } from '../theme/fonts';
 import { Panel } from '../components/ui/Panel';
 import { useMWA } from '../hooks/useMWA';
+import { useSettingsStore } from '../store/settingsStore';
 
 function SettingsRow({
   label,
   value,
   hasChevron = false,
+  onPress,
 }: {
   label: string;
   value: string;
   hasChevron?: boolean;
+  onPress?: () => void;
 }) {
   return (
-    <TouchableOpacity style={styles.row} activeOpacity={hasChevron ? 0.7 : 1}>
+    <TouchableOpacity
+      style={styles.row}
+      activeOpacity={hasChevron ? 0.7 : 1}
+      onPress={onPress}
+      disabled={!onPress}
+    >
       <Text style={styles.rowLabel}>{label}</Text>
       <View style={styles.rowRight}>
         <Text style={styles.rowValue}>{value}</Text>
@@ -26,8 +35,35 @@ function SettingsRow({
   );
 }
 
+const LEVERAGE_OPTIONS = ['1x', '2x', '5x', '10x', '20x'];
+const SLIPPAGE_OPTIONS = ['0.1%', '0.5%', '1.0%', '2.0%'];
+const EXPLORER_OPTIONS = ['SolanaFM', 'Solscan', 'Solana Explorer'] as const;
+
 export function SettingsScreen() {
+  const navigation = useNavigation<any>();
   const { connected, publicKey, disconnect } = useMWA();
+  const settings = useSettingsStore();
+
+  useEffect(() => {
+    if (!settings.loaded) settings.load();
+  }, [settings.loaded]);
+
+  const showPicker = useCallback(
+    (title: string, options: string[], current: string, onSelect: (v: string) => void) => {
+      Alert.alert(
+        title,
+        undefined,
+        [
+          ...options.map((opt) => ({
+            text: opt === current ? `✓ ${opt}` : opt,
+            onPress: () => onSelect(opt),
+          })),
+          { text: 'Cancel', style: 'cancel' as const },
+        ],
+      );
+    },
+    [],
+  );
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -54,9 +90,7 @@ export function SettingsScreen() {
                 {connected ? 'Seed Vault · Connected' : 'Disconnected'}
               </Text>
             </View>
-            {connected && (
-              <View style={styles.statusDot} />
-            )}
+            {connected && <View style={styles.statusDot} />}
           </View>
           {connected && (
             <Text style={styles.walletBalance}>Balance: — SOL</Text>
@@ -66,18 +100,77 @@ export function SettingsScreen() {
         {/* Preferences */}
         <Text style={styles.sectionLabel}>PREFERENCES</Text>
         <Panel style={styles.section}>
-          <SettingsRow label="Default Leverage" value="5x" hasChevron />
-          <SettingsRow label="Slippage Tolerance" value="0.5%" hasChevron />
-          <SettingsRow label="Price Alerts" value="ON" hasChevron />
-          <SettingsRow label="Haptic Feedback" value="ON" />
+          <SettingsRow
+            label="Default Leverage"
+            value={settings.defaultLeverage}
+            hasChevron
+            onPress={() =>
+              showPicker('Default Leverage', LEVERAGE_OPTIONS, settings.defaultLeverage, (v) =>
+                settings.update({ defaultLeverage: v }),
+              )
+            }
+          />
+          <SettingsRow
+            label="Slippage Tolerance"
+            value={settings.slippageTolerance}
+            hasChevron
+            onPress={() =>
+              showPicker('Slippage Tolerance', SLIPPAGE_OPTIONS, settings.slippageTolerance, (v) =>
+                settings.update({ slippageTolerance: v }),
+              )
+            }
+          />
+          <SettingsRow
+            label="Price Alerts"
+            value={settings.priceAlerts ? 'ON' : 'OFF'}
+            hasChevron
+            onPress={() => settings.update({ priceAlerts: !settings.priceAlerts })}
+          />
+          <SettingsRow
+            label="Haptic Feedback"
+            value={settings.hapticFeedback ? 'ON' : 'OFF'}
+            onPress={() => settings.update({ hapticFeedback: !settings.hapticFeedback })}
+          />
+        </Panel>
+
+        {/* Tools */}
+        <Text style={styles.sectionLabel}>TOOLS</Text>
+        <Panel style={styles.section}>
+          <SettingsRow
+            label="💧  Faucet"
+            value="Get devnet tokens"
+            hasChevron
+            onPress={() => navigation.navigate('Faucet')}
+          />
+          <SettingsRow
+            label="💰  Deposit / Withdraw"
+            value="Manage collateral"
+            hasChevron
+            onPress={() => navigation.navigate('Collateral')}
+          />
+          <SettingsRow
+            label="🏗  Create Market"
+            value="Launch a new market"
+            hasChevron
+            onPress={() => navigation.navigate('CreateMarket')}
+          />
         </Panel>
 
         {/* Network */}
         <Text style={styles.sectionLabel}>NETWORK</Text>
         <Panel style={styles.section}>
-          <SettingsRow label="Network" value="Devnet" hasChevron />
-          <SettingsRow label="RPC Endpoint" value="Default" hasChevron />
-          <SettingsRow label="Explorer" value="SolanaFM" hasChevron />
+          <SettingsRow label="Network" value={settings.network === 'devnet' ? 'Devnet' : 'Mainnet'} />
+          <SettingsRow label="RPC Endpoint" value={settings.rpcEndpoint} />
+          <SettingsRow
+            label="Explorer"
+            value={settings.explorer}
+            hasChevron
+            onPress={() =>
+              showPicker('Explorer', [...EXPLORER_OPTIONS], settings.explorer, (v) =>
+                settings.update({ explorer: v as typeof EXPLORER_OPTIONS[number] }),
+              )
+            }
+          />
         </Panel>
 
         {/* Disconnect */}
@@ -132,22 +225,14 @@ const styles = StyleSheet.create({
     padding: 0,
     overflow: 'hidden',
   },
-  // Wallet
-  walletPanel: {
-    gap: 8,
-  },
+  walletPanel: { gap: 8 },
   walletRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
   },
-  walletIcon: {
-    fontSize: 24,
-  },
-  walletInfo: {
-    flex: 1,
-    gap: 2,
-  },
+  walletIcon: { fontSize: 24 },
+  walletInfo: { flex: 1, gap: 2 },
   walletAddress: {
     fontFamily: fonts.mono,
     fontSize: 14,
@@ -170,7 +255,6 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginLeft: 36,
   },
-  // Settings rows
   row: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -200,7 +284,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.textMuted,
   },
-  // Disconnect
   disconnectBtn: {
     borderWidth: 1,
     borderColor: 'rgba(239, 68, 68, 0.3)',
@@ -216,7 +299,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.short,
   },
-  // Version
   version: {
     fontFamily: fonts.mono,
     fontSize: 12,

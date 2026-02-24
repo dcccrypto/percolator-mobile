@@ -1,26 +1,97 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, FlatList } from 'react-native';
+import React, { useState, useCallback } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  FlatList,
+  Alert,
+  ActivityIndicator,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { colors, radii } from '../theme/tokens';
 import { fonts } from '../theme/fonts';
 import { Panel } from '../components/ui/Panel';
 import { InputField } from '../components/ui/InputField';
+import { ErrorBanner } from '../components/ui/ErrorBanner';
+import { connection } from '../lib/solana';
+import { useMWA } from '../hooks/useMWA';
 
 const TOKENS = [
   { id: 'sol', name: 'SOL', icon: '◆', defaultAmount: '1.0' },
   { id: 'usdc', name: 'USDC', icon: '$', defaultAmount: '1000' },
 ];
 
-const MOCK_HISTORY = [
-  { id: '1', token: 'USDC', amount: '1000', time: '2 min ago', status: '✓' },
-  { id: '2', token: 'SOL', amount: '1.0', time: '15 min ago', status: '✓' },
-];
+interface MintRecord {
+  id: string;
+  token: string;
+  amount: string;
+  time: string;
+  status: '✓' | '⏳' | '✗';
+}
 
 export function FaucetScreen() {
-  const [selectedToken, setSelectedToken] = useState('usdc');
-  const [amount, setAmount] = useState('1000');
+  const { connected, publicKey } = useMWA();
+  const [selectedToken, setSelectedToken] = useState('sol');
+  const [amount, setAmount] = useState('1.0');
+  const [minting, setMinting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [history, setHistory] = useState<MintRecord[]>([]);
 
   const token = TOKENS.find((t) => t.id === selectedToken)!;
+
+  const handleMint = useCallback(async () => {
+    if (!connected || !publicKey) {
+      setError('Connect your wallet first');
+      return;
+    }
+
+    setMinting(true);
+    setError(null);
+
+    const record: MintRecord = {
+      id: Date.now().toString(),
+      token: token.name,
+      amount,
+      time: 'Just now',
+      status: '⏳',
+    };
+    setHistory((prev) => [record, ...prev]);
+
+    try {
+      if (selectedToken === 'sol') {
+        // Request SOL airdrop on devnet
+        const lamports = Math.round(parseFloat(amount) * LAMPORTS_PER_SOL);
+        if (lamports <= 0 || lamports > 2 * LAMPORTS_PER_SOL) {
+          throw new Error('SOL airdrop limited to 0-2 SOL per request');
+        }
+
+        const sig = await connection.requestAirdrop(publicKey, lamports);
+        await connection.confirmTransaction(sig, 'confirmed');
+
+        setHistory((prev) =>
+          prev.map((r) => (r.id === record.id ? { ...r, status: '✓' as const } : r)),
+        );
+
+        Alert.alert('✅ SOL Airdrop', `${amount} SOL sent!\nTx: ${sig.slice(0, 16)}…`);
+      } else {
+        // USDC on devnet — there's no universal devnet USDC faucet, so we show a helpful message.
+        // In production, this would call a backend faucet endpoint.
+        throw new Error(
+          'Devnet USDC mint requires a faucet backend. Use the API endpoint at /api/faucet or airdrop SOL first.',
+        );
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Mint failed';
+      setError(msg);
+      setHistory((prev) =>
+        prev.map((r) => (r.id === record.id ? { ...r, status: '✗' as const } : r)),
+      );
+    } finally {
+      setMinting(false);
+    }
+  }, [connected, publicKey, selectedToken, amount, token.name]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -28,10 +99,14 @@ export function FaucetScreen() {
         <Text style={styles.title}>Faucet 🚰</Text>
       </View>
 
+      {error && <ErrorBanner message={error} />}
+
       {/* Balance */}
       <Panel style={styles.balancePanel}>
         <Text style={styles.balanceLabel}>Balance</Text>
-        <Text style={styles.balanceValue}>0 ◆</Text>
+        <Text style={styles.balanceValue}>
+          {connected ? '—' : 'Connect wallet'}
+        </Text>
       </Panel>
 
       {/* Token Selection */}
@@ -68,29 +143,51 @@ export function FaucetScreen() {
       <View style={styles.infoBanner}>
         <Text style={styles.infoText}>
           ⓘ Devnet tokens have no real value. For testing only.
+          {selectedToken === 'sol' ? ' Max 2 SOL per airdrop.' : ''}
         </Text>
       </View>
 
       {/* Mint CTA */}
-      <TouchableOpacity style={styles.mintBtn} activeOpacity={0.8}>
-        <Text style={styles.mintText}>Mint Tokens 💧</Text>
+      <TouchableOpacity
+        style={[styles.mintBtn, (!connected || minting) && styles.mintBtnDisabled]}
+        activeOpacity={0.8}
+        onPress={handleMint}
+        disabled={!connected || minting}
+      >
+        {minting ? (
+          <ActivityIndicator color="#ffffff" size="small" />
+        ) : (
+          <Text style={styles.mintText}>
+            {selectedToken === 'sol' ? 'Airdrop SOL 💧' : 'Mint Tokens 💧'}
+          </Text>
+        )}
       </TouchableOpacity>
+
+      {!connected && (
+        <Text style={styles.hint}>Connect your wallet to use the faucet.</Text>
+      )}
 
       {/* History */}
       <Text style={[styles.sectionLabel, { marginTop: 24 }]}>RECENT MINTS</Text>
-      <FlatList
-        data={MOCK_HISTORY}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <View style={styles.historyRow}>
-            <Text style={styles.historyAmount}>
-              {item.amount} {item.token}
-            </Text>
-            <Text style={styles.historyTime}>{item.time}</Text>
-            <Text style={styles.historyStatus}>{item.status}</Text>
-          </View>
-        )}
-      />
+      {history.length === 0 ? (
+        <Text style={styles.emptyText}>No mints yet</Text>
+      ) : (
+        <FlatList
+          data={history}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => (
+            <View style={styles.historyRow}>
+              <Text style={styles.historyAmount}>
+                {item.amount} {item.token}
+              </Text>
+              <Text style={styles.historyTime}>{item.time}</Text>
+              <Text style={[styles.historyStatus, item.status === '✗' && { color: colors.short }]}>
+                {item.status}
+              </Text>
+            </View>
+          )}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -191,11 +288,28 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  mintBtnDisabled: {
+    opacity: 0.4,
+  },
   mintText: {
     fontFamily: fonts.display,
     fontSize: 16,
     fontWeight: '700',
     color: '#ffffff',
+  },
+  hint: {
+    fontFamily: fonts.body,
+    fontSize: 13,
+    color: colors.textMuted,
+    textAlign: 'center',
+    marginTop: 12,
+  },
+  emptyText: {
+    fontFamily: fonts.body,
+    fontSize: 13,
+    color: colors.textMuted,
+    textAlign: 'center',
+    paddingVertical: 16,
   },
   historyRow: {
     flexDirection: 'row',

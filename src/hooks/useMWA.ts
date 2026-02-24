@@ -54,9 +54,25 @@ export function useMWA() {
     setState({ connected: false, publicKey: null, connecting: false, error: null });
   }, []);
 
+  /**
+   * Sign and send serialized transactions via MWA.
+   * MWA SDK v2 expects `payloads: string[]` (base64-encoded), NOT `transactions: Uint8Array[]`.
+   * Returns `{ signatures: string[] }`.
+   */
   const signAndSend = useCallback(
-    async (serializedTransactions: Uint8Array[]) => {
+    async (serializedTransactions: Uint8Array[]): Promise<{ signatures: string[] }> => {
       const storedToken = await SecureStore.getItemAsync(AUTH_TOKEN_KEY);
+
+      // Convert Uint8Array[] to base64 strings for MWA v2 API
+      const payloads = serializedTransactions.map((tx) => {
+        // Use a manual base64 encoder to avoid needing Buffer polyfill
+        let binary = '';
+        for (let i = 0; i < tx.length; i++) {
+          binary += String.fromCharCode(tx[i]);
+        }
+        return btoa(binary);
+      });
+
       return transact(async (wallet) => {
         await wallet.authorize({
           cluster: CLUSTER,
@@ -64,7 +80,7 @@ export function useMWA() {
           ...(storedToken ? { auth_token: storedToken } : {}),
         });
         return wallet.signAndSendTransactions({
-          transactions: serializedTransactions,
+          payloads,
         });
       });
     },

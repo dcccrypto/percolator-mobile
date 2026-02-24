@@ -25,8 +25,12 @@ import { useMWA } from './useMWA';
 
 // ---------------------------------------------------------------------------
 // Instruction tag constants (must match program/src/processor/mod.rs)
+// See packages/core/src/abi/instructions.ts IX_TAG
 // ---------------------------------------------------------------------------
-const IX_KEEPER_CRANK = 8;
+const IX_INIT_USER = 1;
+const IX_DEPOSIT_COLLATERAL = 3;
+const IX_WITHDRAW_COLLATERAL = 4;
+const IX_KEEPER_CRANK = 5; // was wrongly 8 (CloseAccount)
 const IX_TRADE_CPI = 10;
 
 // ---------------------------------------------------------------------------
@@ -52,6 +56,12 @@ function encI128LE(v: bigint): Uint8Array {
   const hi = (unsigned >> 64n) & BigInt('0xFFFFFFFFFFFFFFFF');
   dv.setBigUint64(0, lo, true);
   dv.setBigUint64(8, hi, true);
+  return b;
+}
+
+function encU64LE(v: bigint): Uint8Array {
+  const b = new Uint8Array(8);
+  new DataView(b.buffer).setBigUint64(0, v, true);
   return b;
 }
 
@@ -200,6 +210,121 @@ function meta(pubkey: PublicKey, isSigner: boolean, isWritable: boolean): Accoun
   return { pubkey, isSigner, isWritable };
 }
 
+// SPL Token Program
+const TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
+const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
+const SYSTEM_PROGRAM_ID = new PublicKey('11111111111111111111111111111111');
+
+/**
+ * Derive associated token address (ATA) for a given owner and mint.
+ */
+function deriveATA(owner: PublicKey, mint: PublicKey): PublicKey {
+  const [ata] = PublicKey.findProgramAddressSync(
+    [owner.toBytes(), TOKEN_PROGRAM_ID.toBytes(), mint.toBytes()],
+    ASSOCIATED_TOKEN_PROGRAM_ID,
+  );
+  return ata;
+}
+
+/**
+ * Derive vault authority PDA. Seeds: ["vault", slab_key]
+ */
+function deriveVaultAuthority(programId: PublicKey, slab: PublicKey): PublicKey {
+  const [pda] = PublicKey.findProgramAddressSync(
+    [new TextEncoder().encode('vault'), slab.toBytes()],
+    programId,
+  );
+  return pda;
+}
+
+// ---------------------------------------------------------------------------
+// InitUser instruction builder
+// Accounts: [user(s,w), slab(w), userAta(w), vault(w), tokenProgram]
+// Data: [1(u8), feePayment(u64)]
+// ---------------------------------------------------------------------------
+
+function buildInitUserIx(
+  programId: PublicKey,
+  user: PublicKey,
+  slab: PublicKey,
+  userAta: PublicKey,
+  vault: PublicKey,
+  feePayment: bigint = 0n,
+): TransactionInstruction {
+  const data = concat(encU8(IX_INIT_USER), encU64LE(feePayment));
+  return buildIx(programId, [
+    meta(user, true, true),
+    meta(slab, false, true),
+    meta(userAta, false, true),
+    meta(vault, false, true),
+    meta(TOKEN_PROGRAM_ID, false, false),
+  ], data);
+}
+
+// ---------------------------------------------------------------------------
+// DepositCollateral instruction builder
+// Accounts: [user(s,w), slab(w), userAta(w), vault(w), tokenProgram, clock]
+// Data: [3(u8), userIdx(u16), amount(u64)]
+// ---------------------------------------------------------------------------
+
+function buildDepositCollateralIx(
+  programId: PublicKey,
+  user: PublicKey,
+  slab: PublicKey,
+  userAta: PublicKey,
+  vault: PublicKey,
+  userIdx: number,
+  amount: bigint,
+): TransactionInstruction {
+  const data = concat(
+    encU8(IX_DEPOSIT_COLLATERAL),
+    encU16LE(userIdx),
+    encU64LE(amount),
+  );
+  return buildIx(programId, [
+    meta(user, true, true),
+    meta(slab, false, true),
+    meta(userAta, false, true),
+    meta(vault, false, true),
+    meta(TOKEN_PROGRAM_ID, false, false),
+    meta(SYSVAR_CLOCK_PUBKEY, false, false),
+  ], data);
+}
+
+// ---------------------------------------------------------------------------
+// WithdrawCollateral instruction builder
+// Accounts: [user(s,w), slab(w), vault(w), userAta(w), vaultPda, tokenProgram, clock, oracleIdx]
+// Data: [4(u8), userIdx(u16), amount(u64)]
+// ---------------------------------------------------------------------------
+
+function buildWithdrawCollateralIx(
+  programId: PublicKey,
+  user: PublicKey,
+  slab: PublicKey,
+  vault: PublicKey,
+  userAta: PublicKey,
+  vaultPda: PublicKey,
+  oracle: PublicKey,
+  userIdx: number,
+  amount: bigint,
+): TransactionInstruction {
+  const data = concat(
+    encU8(IX_WITHDRAW_COLLATERAL),
+    encU16LE(userIdx),
+    encU64LE(amount),
+  );
+  return buildIx(programId, [
+    meta(user, true, true),
+    meta(slab, false, true),
+    meta(vault, false, true),
+    meta(userAta, false, true),
+    meta(vaultPda, false, false),
+    meta(TOKEN_PROGRAM_ID, false, false),
+    meta(SYSVAR_CLOCK_PUBKEY, false, false),
+    meta(oracle, false, false),
+  ], data);
+}
+
 function buildKeeperCrankIx(
   programId: PublicKey,
   caller: PublicKey,
@@ -311,14 +436,70 @@ export function useTrade(): UseTradeResult {
         const lpPda = deriveLpPda(config.programId, slabPk, lp.idx);
 
         // 4. Find user account index (scan for owner)
-        // If userIdx is provided, use it. Otherwise scan.
+        // 5. Check if user account exists on the slab; if not, prepend InitUser
         let userIdx = params.userIdx;
+        let needsInitUser = false;
 
-        // 5. Convert size to e6 (signed: positive = long, negative = short)
+        // Scan all accounts in the slab to find one owned by this wallet
+        let existingIdx = -1;
+        {
+          let scanOff = ACCOUNTS_SECTION_OFF;
+          let scanIdx = 0;
+          while (scanOff + ACCT_SIZE <= data.length) {
+            const acctOwner = readPubkey(data, scanOff + ACCT_OWNER_OFF);
+            const acctKind = data[scanOff + ACCT_KIND_OFF];
+            if (acctKind === 0 && acctOwner.equals(publicKey)) {
+              existingIdx = scanIdx;
+              break;
+            }
+            scanOff += ACCT_SIZE;
+            scanIdx++;
+          }
+        }
+
+        if (existingIdx >= 0) {
+          userIdx = existingIdx;
+        } else {
+          // User has no account — we need InitUser first
+          needsInitUser = true;
+          // Find next empty slot (we'll use the total number of accounts as the new idx)
+          let totalAccounts = 0;
+          let scanOff = ACCOUNTS_SECTION_OFF;
+          while (scanOff + ACCT_SIZE <= data.length) {
+            totalAccounts++;
+            scanOff += ACCT_SIZE;
+          }
+          userIdx = totalAccounts;
+        }
+
+        // 6. Convert size to e6 (signed: positive = long, negative = short)
         const absE6 = BigInt(Math.round(Math.abs(params.sizeUsd) * 1_000_000));
         const sizeE6 = params.direction === 'long' ? absE6 : -absE6;
 
-        // 6. Build instructions
+        // 7. Build instructions
+        const { blockhash } = await connection.getLatestBlockhash('confirmed');
+        const tx = new Transaction({
+          recentBlockhash: blockhash,
+          feePayer: publicKey,
+        });
+
+        // Compute budget (higher if we're also doing InitUser)
+        tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: needsInitUser ? 800_000 : 600_000 }));
+        tx.add(ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 5000 }));
+
+        // If new user, prepend InitUser instruction
+        if (needsInitUser) {
+          const userAta = deriveATA(publicKey, config.collateralMint);
+          tx.add(buildInitUserIx(
+            config.programId,
+            publicKey,
+            slabPk,
+            userAta,
+            config.vault,
+            0n, // feePayment
+          ));
+        }
+
         const crankIx = buildKeeperCrankIx(
           config.programId,
           publicKey,
@@ -339,16 +520,6 @@ export function useTrade(): UseTradeResult {
           sizeE6,
         );
 
-        // 7. Build transaction
-        const { blockhash } = await connection.getLatestBlockhash('confirmed');
-        const tx = new Transaction({
-          recentBlockhash: blockhash,
-          feePayer: publicKey,
-        });
-
-        // Add compute budget (trade is ~400k CU with crank)
-        tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 600_000 }));
-        tx.add(ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 5000 }));
         tx.add(crankIx);
         tx.add(tradeIx);
 
@@ -360,7 +531,8 @@ export function useTrade(): UseTradeResult {
 
         const results = await signAndSend([new Uint8Array(serialized)]);
 
-        return { signature: results[0] };
+        // MWA v2 returns { signatures: string[] }, not a plain array
+        return { signature: results.signatures[0] };
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Transaction failed';
         setError(msg);

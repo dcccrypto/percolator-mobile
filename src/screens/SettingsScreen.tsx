@@ -1,6 +1,7 @@
 import React, { useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
 import { colors, radii } from '../theme/tokens';
 import { fonts } from '../theme/fonts';
 import { Panel } from '../components/ui/Panel';
@@ -39,6 +40,7 @@ const SLIPPAGE_OPTIONS = ['0.1%', '0.5%', '1.0%', '2.0%'];
 const EXPLORER_OPTIONS = ['SolanaFM', 'Solscan', 'Solana Explorer'] as const;
 
 export function SettingsScreen() {
+  const navigation = useNavigation<any>();
   const { connected, publicKey, disconnect } = useMWA();
   const settings = useSettingsStore();
 
@@ -128,6 +130,29 @@ export function SettingsScreen() {
             label="Haptic Feedback"
             value={settings.hapticFeedback ? 'ON' : 'OFF'}
             onPress={() => settings.update({ hapticFeedback: !settings.hapticFeedback })}
+          />
+        </Panel>
+
+        {/* Tools */}
+        <Text style={styles.sectionLabel}>TOOLS</Text>
+        <Panel style={styles.section}>
+          <SettingsRow
+            label="💧  Faucet"
+            value="Get devnet tokens"
+            hasChevron
+            onPress={() => navigation.navigate('Faucet')}
+          />
+          <SettingsRow
+            label="💰  Deposit / Withdraw"
+            value="Manage collateral"
+            hasChevron
+            onPress={() => navigation.navigate('Collateral')}
+          />
+          <SettingsRow
+            label="🏗  Create Market"
+            value="Launch a new market"
+            hasChevron
+            onPress={() => navigation.navigate('CreateMarket')}
           />
         </Panel>
 

@@ -436,9 +436,6 @@ export function useTrade(): UseTradeResult {
         const lpPda = deriveLpPda(config.programId, slabPk, lp.idx);
 
         // 4. Find user account index (scan for owner)
-        // If userIdx is provided, use it. Otherwise scan.
-        let userIdx = params.userIdx;
-
         // 5. Check if user account exists on the slab; if not, prepend InitUser
         let userIdx = params.userIdx;
         let needsInitUser = false;

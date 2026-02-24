@@ -23,12 +23,13 @@ export function usePriceHistory(
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const hasFetchedRef = useRef(false);
 
   const fetchPrices = useCallback(async () => {
     if (!slabAddress) return;
 
     try {
-      setLoading((prev) => (prices.length === 0 ? true : prev)); // Only show loading on first fetch
+      if (!hasFetchedRef.current) setLoading(true); // Only show loading on first fetch
       const data = await api.getPriceHistory(slabAddress);
 
       if (data && data.length > 0) {
@@ -39,6 +40,7 @@ export function usePriceHistory(
         );
         setPrices(sorted.map((d) => d.last_price));
         setError(null);
+        hasFetchedRef.current = true;
       }
     } catch (err) {
       const msg =
@@ -47,15 +49,17 @@ export function usePriceHistory(
     } finally {
       setLoading(false);
     }
-  }, [slabAddress, prices.length]);
+  }, [slabAddress]);
 
   useEffect(() => {
     if (!slabAddress) {
       setPrices([]);
       setError(null);
+      hasFetchedRef.current = false;
       return;
     }
 
+    hasFetchedRef.current = false;
     fetchPrices();
 
     // Poll every 30s
@@ -67,7 +71,7 @@ export function usePriceHistory(
         intervalRef.current = null;
       }
     };
-  }, [slabAddress]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [slabAddress, fetchPrices]);
 
   const refresh = useCallback(() => {
     fetchPrices();

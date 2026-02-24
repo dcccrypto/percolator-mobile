@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useCallback } from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Text } from 'react-native';
@@ -9,6 +9,8 @@ import { PortfolioScreen } from '../screens/PortfolioScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { FaucetScreen } from '../screens/FaucetScreen';
 import { MarketCreationScreen } from '../screens/MarketCreationScreen';
+import { CollateralScreen } from '../screens/CollateralScreen';
+import { OnboardingScreen } from '../screens/OnboardingScreen';
 import { colors } from '../theme/tokens';
 import { fonts } from '../theme/fonts';
 
@@ -40,11 +42,12 @@ function MoreNavigator() {
       <MoreStack.Screen name="SettingsHome" component={SettingsScreen} />
       <MoreStack.Screen name="Faucet" component={FaucetScreen} />
       <MoreStack.Screen name="CreateMarket" component={MarketCreationScreen} />
+      <MoreStack.Screen name="Collateral" component={CollateralScreen} />
     </MoreStack.Navigator>
   );
 }
 
-export function RootNavigator() {
+function MainTabs() {
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -76,4 +79,23 @@ export function RootNavigator() {
       <Tab.Screen name="More" component={MoreNavigator} />
     </Tab.Navigator>
   );
+}
+
+/**
+ * Root navigator — shows onboarding on first launch, then main tabs.
+ * Onboarding is shown until the user connects a wallet.
+ */
+export function RootNavigator() {
+  // TODO: persist onboarding completion state with SecureStore
+  const [onboarded, setOnboarded] = useState(false);
+
+  const handleOnboardingComplete = useCallback(() => {
+    setOnboarded(true);
+  }, []);
+
+  if (!onboarded) {
+    return <OnboardingScreen onComplete={handleOnboardingComplete} />;
+  }
+
+  return <MainTabs />;
 }

@@ -1,6 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
-const WS_URL = process.env.EXPO_PUBLIC_WS_URL ?? 'wss://api.percolatorlaunch.com/ws';
+/**
+ * WS URL for real-time price data.
+ * The old endpoint (wss://api.percolatorlaunch.com/ws) was removed.
+ * Default to the Helius devnet WSS endpoint; override with EXPO_PUBLIC_WS_URL.
+ */
+const WS_URL = process.env.EXPO_PUBLIC_WS_URL ?? 'wss://devnet.helius-rpc.com/?api-key=demo';
 
 interface PriceUpdate {
   slabAddress: string;

@@ -1,13 +1,26 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useState, useCallback } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  ActivityIndicator,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, radii } from '../theme/tokens';
 import { fonts } from '../theme/fonts';
 import { Panel } from '../components/ui/Panel';
 import { InputField } from '../components/ui/InputField';
 import { FilterPill } from '../components/ui/FilterPill';
+import { ErrorBanner } from '../components/ui/ErrorBanner';
+import { useMWA } from '../hooks/useMWA';
+import { useCreateMarket } from '../hooks/useCreateMarket';
 
 export function MarketCreationScreen() {
+  const { connected, connect, connecting } = useMWA();
+  const { state: deployState, deploy, reset } = useCreateMarket();
+
   const [mode, setMode] = useState<'quick' | 'manual'>('quick');
   const [name, setName] = useState('');
   const [oracle, setOracle] = useState('');
@@ -16,6 +29,48 @@ export function MarketCreationScreen() {
   const [insurance, setInsurance] = useState('1000');
   const [makerFee, setMakerFee] = useState('0.02');
   const [takerFee, setTakerFee] = useState('0.05');
+
+  const canDeploy =
+    connected &&
+    name.trim().length >= 3 &&
+    !deployState.deploying;
+
+  const handleDeploy = useCallback(() => {
+    if (!canDeploy) return;
+
+    deploy({
+      name,
+      oracle,
+      maxLeverage: parseInt(maxLeverage, 10) || 20,
+      fundingRate: parseFloat(fundingRate) || 0.01,
+      insurance: parseInt(insurance, 10) || 1000,
+      makerFee: parseFloat(makerFee) || 0.02,
+      takerFee: parseFloat(takerFee) || 0.05,
+      mode,
+    });
+  }, [
+    canDeploy,
+    deploy,
+    name,
+    oracle,
+    maxLeverage,
+    fundingRate,
+    insurance,
+    makerFee,
+    takerFee,
+    mode,
+  ]);
+
+  const handleConnectOrDeploy = useCallback(() => {
+    if (!connected) {
+      connect();
+      return;
+    }
+    handleDeploy();
+  }, [connected, connect, handleDeploy]);
+
+  // Estimate cost based on mode
+  const estimatedCost = mode === 'quick' ? '~0.3 SOL' : '~0.5 SOL';
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -37,6 +92,10 @@ export function MarketCreationScreen() {
         />
       </View>
 
+      {deployState.error && (
+        <ErrorBanner message={deployState.error} />
+      )}
+
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.content}
@@ -53,7 +112,7 @@ export function MarketCreationScreen() {
           label="Oracle / Price Feed"
           value={oracle}
           onChangeText={setOracle}
-          placeholder="Select Pyth feed..."
+          placeholder="Pyth feed ID (optional — admin oracle if empty)"
         />
 
         {mode === 'manual' && (
@@ -100,13 +159,69 @@ export function MarketCreationScreen() {
         {/* Cost estimate */}
         <View style={styles.costRow}>
           <Text style={styles.costLabel}>Estimated Cost:</Text>
-          <Text style={styles.costValue}>~0.5 SOL</Text>
+          <Text style={styles.costValue}>{estimatedCost}</Text>
         </View>
 
+        {/* Deploy step indicator */}
+        {deployState.deploying && (
+          <View style={styles.stepRow}>
+            <ActivityIndicator color={colors.accent} size="small" />
+            <Text style={styles.stepText}>{deployState.step}</Text>
+          </View>
+        )}
+
+        {/* Success state */}
+        {deployState.txSignature && !deployState.deploying && (
+          <Panel style={styles.successPanel}>
+            <Text style={styles.successIcon}>✅</Text>
+            <Text style={styles.successText}>Market deployed!</Text>
+            <Text style={styles.txText}>
+              Tx: {deployState.txSignature.slice(0, 20)}…
+            </Text>
+            <TouchableOpacity
+              style={styles.newMarketBtn}
+              onPress={() => {
+                reset();
+                setName('');
+                setOracle('');
+              }}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.newMarketText}>Create Another</Text>
+            </TouchableOpacity>
+          </Panel>
+        )}
+
         {/* Deploy CTA */}
-        <TouchableOpacity style={styles.deployBtn} activeOpacity={0.8}>
-          <Text style={styles.deployText}>Deploy Market 🚀</Text>
-        </TouchableOpacity>
+        {!deployState.txSignature && (
+          <TouchableOpacity
+            style={[
+              styles.deployBtn,
+              (!canDeploy && connected) && styles.deployBtnDisabled,
+            ]}
+            activeOpacity={0.8}
+            onPress={handleConnectOrDeploy}
+            disabled={deployState.deploying}
+          >
+            {connecting ? (
+              <ActivityIndicator color="#ffffff" size="small" />
+            ) : (
+              <Text style={styles.deployText}>
+                {!connected
+                  ? 'Connect Wallet 🔗'
+                  : deployState.deploying
+                    ? 'Deploying…'
+                    : 'Deploy Market 🚀'}
+              </Text>
+            )}
+          </TouchableOpacity>
+        )}
+
+        {!connected && (
+          <Text style={styles.hint}>
+            Connect your Solana wallet to deploy a market on devnet.
+          </Text>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -136,6 +251,7 @@ const styles = StyleSheet.create({
   content: {
     padding: 16,
     gap: 16,
+    paddingBottom: 32,
   },
   paramsPanel: {
     gap: 12,
@@ -170,10 +286,63 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  deployBtnDisabled: {
+    opacity: 0.4,
+  },
   deployText: {
     fontFamily: fonts.display,
     fontSize: 16,
     fontWeight: '700',
     color: '#ffffff',
+  },
+  stepRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  stepText: {
+    fontFamily: fonts.body,
+    fontSize: 13,
+    color: colors.textMuted,
+  },
+  successPanel: {
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 16,
+  },
+  successIcon: {
+    fontSize: 32,
+  },
+  successText: {
+    fontFamily: fonts.display,
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.long,
+  },
+  txText: {
+    fontFamily: fonts.mono,
+    fontSize: 11,
+    color: colors.textMuted,
+  },
+  newMarketBtn: {
+    backgroundColor: colors.bgElevated,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: radii.md,
+    marginTop: 8,
+  },
+  newMarketText: {
+    fontFamily: fonts.body,
+    fontSize: 14,
+    color: colors.accent,
+    fontWeight: '600',
+  },
+  hint: {
+    fontFamily: fonts.body,
+    fontSize: 13,
+    color: colors.textMuted,
+    textAlign: 'center',
+    paddingHorizontal: 16,
   },
 });

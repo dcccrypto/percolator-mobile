@@ -23,7 +23,7 @@ export function FilterPill({ label, active = false, onPress }: FilterPillProps) 
 
 const styles = StyleSheet.create({
   pill: {
-    minHeight: 32,
+    minHeight: MIN_TAP_TARGET,
     minWidth: MIN_TAP_TARGET,
     paddingHorizontal: 14,
     paddingVertical: 6,

@@ -190,7 +190,7 @@ export function TradeScreen() {
           <MiniChart
             data={priceHistory}
             width={screenWidth - 64} // 16px padding * 2 + 16px panel padding * 2
-            height={160}
+            height={220}
             loading={chartLoading}
           />
           <View style={styles.timeframes}>

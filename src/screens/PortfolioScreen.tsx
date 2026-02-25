@@ -124,10 +124,40 @@ function PositionCard({ position }: { position: Position }) {
 function EmptyPortfolio() {
   return (
     <View style={styles.emptyContainer}>
-      <Text style={styles.emptyIcon}>📂</Text>
+      <View style={styles.emptyIconWrap}>
+        <Text style={styles.emptyIcon}>📂</Text>
+      </View>
       <Text style={styles.emptyTitle}>No open positions</Text>
       <Text style={styles.emptySubtitle}>
         Open a trade to see your positions here.
+      </Text>
+    </View>
+  );
+}
+
+function EmptyHistory() {
+  return (
+    <View style={styles.emptyContainer}>
+      <View style={styles.emptyIconWrap}>
+        <Text style={styles.emptyIcon}>🕐</Text>
+      </View>
+      <Text style={styles.emptyTitle}>No trade history</Text>
+      <Text style={styles.emptySubtitle}>
+        Your closed positions and past trades will appear here.
+      </Text>
+    </View>
+  );
+}
+
+function EmptyOrders() {
+  return (
+    <View style={styles.emptyContainer}>
+      <View style={styles.emptyIconWrap}>
+        <Text style={styles.emptyIcon}>📋</Text>
+      </View>
+      <Text style={styles.emptyTitle}>No open orders</Text>
+      <Text style={styles.emptySubtitle}>
+        Limit and stop orders you place will appear here.
       </Text>
     </View>
   );
@@ -148,6 +178,25 @@ export function PortfolioScreen() {
   const pnlPositive = totalPnl >= 0;
 
   const openPositions = positions.filter((p) => p.size !== 0);
+  // History = closed positions (size is 0 but had trades)
+  const closedPositions = positions.filter((p) => p.size === 0);
+  // Orders: pending/limit orders — placeholder until backend supports
+  const pendingOrders: Position[] = [];
+
+  // Select data based on active tab
+  const tabData =
+    tab === 'open'
+      ? openPositions
+      : tab === 'history'
+        ? closedPositions
+        : pendingOrders;
+
+  const TabEmptyComponent =
+    tab === 'open'
+      ? EmptyPortfolio
+      : tab === 'history'
+        ? EmptyHistory
+        : EmptyOrders;
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -212,7 +261,7 @@ export function PortfolioScreen() {
 
       {/* Position list */}
       <FlatList
-        data={tab === 'open' ? openPositions : []}
+        data={tabData}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}
@@ -224,11 +273,7 @@ export function PortfolioScreen() {
           />
         }
         renderItem={({ item }) => <PositionCard position={item} />}
-        ListEmptyComponent={
-          !loading ? (
-            <EmptyPortfolio />
-          ) : null
-        }
+        ListEmptyComponent={!loading ? <TabEmptyComponent /> : null}
       />
     </SafeAreaView>
   );
@@ -282,25 +327,38 @@ const styles = StyleSheet.create({
     paddingBottom: 32,
   },
   emptyContainer: {
+    flex: 1,
     alignItems: 'center',
-    paddingTop: 60,
-    gap: 8,
+    justifyContent: 'center',
+    paddingVertical: 64,
+    paddingHorizontal: 32,
+  },
+  emptyIconWrap: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: colors.bgElevated,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
   },
   emptyIcon: {
-    fontSize: 36,
+    fontSize: 28,
   },
   emptyTitle: {
     fontFamily: fonts.display,
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
     color: colors.text,
+    marginBottom: 8,
+    textAlign: 'center',
   },
   emptySubtitle: {
     fontFamily: fonts.body,
-    fontSize: 13,
-    color: colors.textMuted,
+    fontSize: 14,
+    color: colors.textSecondary,
     textAlign: 'center',
-    paddingHorizontal: 32,
+    lineHeight: 20,
   },
   // Position Card
   posCard: {

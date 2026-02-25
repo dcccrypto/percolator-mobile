@@ -1,7 +1,8 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { Text } from 'react-native';
+import { Text, ActivityIndicator, View } from 'react-native';
+import * as SecureStore from 'expo-secure-store';
 
 import { MarketsScreen } from '../screens/MarketsScreen';
 import { TradeScreen } from '../screens/TradeScreen';
@@ -81,17 +82,39 @@ function MainTabs() {
   );
 }
 
+const ONBOARDING_KEY = 'percolator_onboarded';
+
 /**
  * Root navigator — shows onboarding on first launch, then main tabs.
- * Onboarding is shown until the user connects a wallet.
+ * Onboarding state is persisted in SecureStore so it survives app restarts.
  */
 export function RootNavigator() {
-  // TODO: persist onboarding completion state with SecureStore
-  const [onboarded, setOnboarded] = useState(false);
+  const [onboarded, setOnboarded] = useState<boolean | null>(null); // null = loading
 
-  const handleOnboardingComplete = useCallback(() => {
-    setOnboarded(true);
+  // Load persisted onboarding state on mount
+  useEffect(() => {
+    SecureStore.getItemAsync(ONBOARDING_KEY)
+      .then((val) => setOnboarded(val === 'true'))
+      .catch(() => setOnboarded(false));
   }, []);
+
+  const handleOnboardingComplete = useCallback(async () => {
+    setOnboarded(true);
+    try {
+      await SecureStore.setItemAsync(ONBOARDING_KEY, 'true');
+    } catch {
+      // Best effort — will re-show onboarding if SecureStore fails
+    }
+  }, []);
+
+  // Show loading spinner while checking persisted state
+  if (onboarded === null) {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.bgVoid, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator color={colors.accent} size="large" />
+      </View>
+    );
+  }
 
   if (!onboarded) {
     return <OnboardingScreen onComplete={handleOnboardingComplete} />;

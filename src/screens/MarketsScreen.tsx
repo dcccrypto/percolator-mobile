@@ -48,7 +48,7 @@ function MarketCard({
     totalOpenInterest: number | null;
     maxLeverage: number;
   };
-  onTrade: (slabAddress: string, symbol: string) => void;
+  onTrade: (slabAddress: string, symbol: string, direction?: 'long' | 'short') => void;
 }) {
   const changeColor = market.change24h >= 0 ? colors.long : colors.short;
   const changePrefix = market.change24h >= 0 ? '+' : '';
@@ -81,14 +81,14 @@ function MarketCard({
           direction="long"
           size="sm"
           style={styles.tradeBtn}
-          onPress={() => onTrade(market.slabAddress, market.symbol)}
+          onPress={() => onTrade(market.slabAddress, market.symbol, 'long')}
         />
         <TradeButton
           label="Short ▼"
           direction="short"
           size="sm"
           style={styles.tradeBtn}
-          onPress={() => onTrade(market.slabAddress, market.symbol)}
+          onPress={() => onTrade(market.slabAddress, market.symbol, 'short')}
         />
       </View>
     </Panel>
@@ -103,18 +103,49 @@ export function MarketsScreen() {
   const navigation = useNavigation<any>();
   const { setSelectedMarket } = useMarketStore();
 
-  const handleTrade = useCallback((slabAddress: string, symbol: string) => {
+  const handleTrade = useCallback((slabAddress: string, symbol: string, direction?: 'long' | 'short') => {
     setSelectedMarket({ slabAddress, symbol });
-    navigation.navigate('Trade');
+    navigation.navigate('Trade', direction ? { direction } : undefined);
   }, [setSelectedMarket, navigation]);
 
   const filteredMarkets = useMemo(() => {
-    if (!search) return markets;
-    const q = search.toLowerCase();
-    return markets.filter(
-      (m) => m.symbol.toLowerCase().includes(q) || m.name.toLowerCase().includes(q)
-    );
-  }, [markets, search]);
+    let result = [...markets];
+
+    // Text search filter
+    if (search) {
+      const q = search.toLowerCase();
+      result = result.filter(
+        (m) => m.symbol.toLowerCase().includes(q) || m.name.toLowerCase().includes(q),
+      );
+    }
+
+    // Sort based on active filter
+    switch (activeFilter) {
+      case 'Hot 🔥':
+        // Hot = highest 24h volume (OI × change combo proxy)
+        result.sort(
+          (a, b) =>
+            (b.totalOpenInterest ?? 0) * Math.abs(b.change24h) -
+            (a.totalOpenInterest ?? 0) * Math.abs(a.change24h),
+        );
+        break;
+      case 'Newest':
+        // Newest first — markets don't have createdAt yet; use array order (reverse)
+        result.reverse();
+        break;
+      case 'Volume ↓':
+        result.sort((a, b) => (b.totalOpenInterest ?? 0) - (a.totalOpenInterest ?? 0));
+        break;
+      case 'OI ↓':
+        result.sort((a, b) => (b.totalOpenInterest ?? 0) - (a.totalOpenInterest ?? 0));
+        break;
+      case 'Top Gainers':
+        result.sort((a, b) => b.change24h - a.change24h);
+        break;
+    }
+
+    return result;
+  }, [markets, search, activeFilter]);
 
   const handleRefresh = async () => {
     setRefreshing(true);

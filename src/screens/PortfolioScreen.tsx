@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,16 +7,27 @@ import {
   TouchableOpacity,
   RefreshControl,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
 import { colors, radii } from '../theme/tokens';
 import { fonts } from '../theme/fonts';
 import { FilterPill } from '../components/ui/FilterPill';
 import { ErrorBanner } from '../components/ui/ErrorBanner';
 import { useMWA } from '../hooks/useMWA';
 import { usePositions, type Position } from '../hooks/usePositions';
+import { useTrade } from '../hooks/useTrade';
 
-function PositionCard({ position }: { position: Position }) {
+function PositionCard({
+  position,
+  onClose,
+  onManage,
+}: {
+  position: Position;
+  onClose: (position: Position) => void;
+  onManage: (position: Position) => void;
+}) {
   const isLong = position.direction === 'long';
   const pnlPositive = position.pnl >= 0;
   const pnlColor = pnlPositive ? colors.long : colors.short;
@@ -97,12 +108,17 @@ function PositionCard({ position }: { position: Position }) {
 
       {/* Actions */}
       <View style={styles.posActions}>
-        <TouchableOpacity style={styles.posActionBtn} activeOpacity={0.7}>
+        <TouchableOpacity
+          style={styles.posActionBtn}
+          activeOpacity={0.7}
+          onPress={() => onManage(position)}
+        >
           <Text style={styles.posActionText}>Manage</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.posActionBtn, styles.posCloseBtn]}
           activeOpacity={0.7}
+          onPress={() => onClose(position)}
         >
           <Text style={styles.posCloseText}>Close ✕</Text>
         </TouchableOpacity>
@@ -166,9 +182,59 @@ function EmptyOrders() {
 export function PortfolioScreen() {
   const [tab, setTab] = useState<'open' | 'history' | 'orders'>('open');
   const { connected, publicKey } = useMWA();
+  const navigation = useNavigation<any>();
+  const { submitTrade, submitting } = useTrade();
 
   const { positions, loading, error, refresh } = usePositions(
     connected && publicKey ? publicKey.toBase58() : null,
+  );
+
+  /** Navigate to the Trade tab with the position's market selected for adjustment. */
+  const handleManage = useCallback(
+    (position: Position) => {
+      navigation.navigate('Trade', {
+        direction: position.direction,
+      });
+    },
+    [navigation],
+  );
+
+  /** Show confirmation dialog and close the position by submitting a counter-trade. */
+  const handleClose = useCallback(
+    (position: Position) => {
+      const sizeUsd = position.capital * position.leverage;
+      Alert.alert(
+        'Close Position',
+        `Close your ${position.direction.toUpperCase()} ${position.symbol} position?\n\nSize: ${position.size.toFixed(4)}\nPnL: ${position.pnl >= 0 ? '+' : ''}$${position.pnl.toFixed(2)}`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Close Position',
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                // position.id is `${slabAddress}:${accountId}`
+                const userIdx = parseInt(position.id.split(':')[1], 10);
+                await submitTrade({
+                  slabAddress: position.slabAddress,
+                  userIdx,
+                  sizeUsd,
+                  direction: position.direction === 'long' ? 'short' : 'long',
+                });
+                Alert.alert('✅ Position Closed', `${position.symbol} position closed.`);
+                refresh();
+              } catch (err) {
+                Alert.alert(
+                  'Failed to close',
+                  err instanceof Error ? err.message : 'Unknown error',
+                );
+              }
+            },
+          },
+        ],
+      );
+    },
+    [submitTrade, refresh],
   );
 
   // Summary stats
@@ -272,7 +338,13 @@ export function PortfolioScreen() {
             tintColor={colors.accent}
           />
         }
-        renderItem={({ item }) => <PositionCard position={item} />}
+        renderItem={({ item }) => (
+          <PositionCard
+            position={item}
+            onClose={handleClose}
+            onManage={handleManage}
+          />
+        )}
         ListEmptyComponent={!loading ? <TabEmptyComponent /> : null}
       />
     </SafeAreaView>

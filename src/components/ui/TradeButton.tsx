@@ -53,7 +53,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   sm: {
-    height: 36,
+    height: 44,
     borderRadius: radii.md,
     paddingHorizontal: 12,
   },

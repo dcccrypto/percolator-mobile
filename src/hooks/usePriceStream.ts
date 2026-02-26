@@ -3,9 +3,26 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 /**
  * WS URL for real-time price data.
  * The old endpoint (wss://api.percolatorlaunch.com/ws) was removed.
- * Default to the Helius devnet WSS endpoint; override with EXPO_PUBLIC_WS_URL.
+ * Default to the Helius devnet WSS endpoint using EXPO_PUBLIC_HELIUS_API_KEY;
+ * override completely with EXPO_PUBLIC_WS_URL.
  */
-const WS_URL = process.env.EXPO_PUBLIC_WS_URL ?? 'wss://devnet.helius-rpc.com/?api-key=demo';
+function buildWsUrl(): string {
+  if (process.env.EXPO_PUBLIC_WS_URL) {
+    return process.env.EXPO_PUBLIC_WS_URL;
+  }
+  const apiKey = process.env.EXPO_PUBLIC_HELIUS_API_KEY;
+  if (!apiKey) {
+    console.warn(
+      '[usePriceStream] EXPO_PUBLIC_HELIUS_API_KEY is not set. ' +
+        'Price streaming will not work. Set it in your .env file.',
+    );
+    // Return empty string; connect() will bail when it fails to connect
+    return '';
+  }
+  return `wss://devnet.helius-rpc.com/?api-key=${apiKey}`;
+}
+
+const WS_URL = buildWsUrl();
 
 interface PriceUpdate {
   slabAddress: string;
@@ -29,6 +46,10 @@ export function usePriceStream(slabAddresses: string[]) {
 
   const connect = useCallback(() => {
     if (slabAddresses.length === 0) return;
+    if (!WS_URL) {
+      setStatus('error');
+      return;
+    }
 
     setStatus('connecting');
     const ws = new WebSocket(WS_URL);

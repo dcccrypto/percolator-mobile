@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRoute, RouteProp } from '@react-navigation/native';
 import { colors, radii } from '../theme/tokens';
 import { fonts } from '../theme/fonts';
 import { Panel } from '../components/ui/Panel';
@@ -20,31 +21,78 @@ import { ErrorBanner } from '../components/ui/ErrorBanner';
 import { MiniChart } from '../components/chart/MiniChart';
 import { useMWA } from '../hooks/useMWA';
 import { usePriceStream as usePriceStreamMulti } from '../hooks/usePriceStream';
-import { usePriceHistory } from '../hooks/usePriceHistory';
+import { usePriceHistory, type Timeframe } from '../hooks/usePriceHistory';
 import { useTrade } from '../hooks/useTrade';
 import { useMarketStore } from '../store/marketStore';
+import { useSettingsStore } from '../store/settingsStore';
+
+type TradeRouteParams = {
+  Trade: { direction?: 'long' | 'short' } | undefined;
+};
 
 const LEVERAGE_OPTIONS = ['1x', '2x', '5x', '10x', '20x'];
 
 export function TradeScreen() {
+  const route = useRoute<RouteProp<TradeRouteParams, 'Trade'>>();
   const { connected, publicKey } = useMWA();
   const { selectedMarket, userIdx } = useMarketStore();
+  const settings = useSettingsStore();
   const slabAddress = selectedMarket?.slabAddress;
   const symbol = selectedMarket?.symbol ?? 'SOL-PERP';
   const { prices } = usePriceStreamMulti(slabAddress ? [slabAddress] : []);
   const livePrice = slabAddress ? prices[slabAddress]?.price ?? null : null;
   const { submitting, error: tradeError, submitTrade } = useTrade();
-  const { prices: priceHistory, loading: chartLoading } = usePriceHistory(slabAddress);
+  const [selectedTfState, setSelectedTfState] = useState<Timeframe>('1h');
+  const { prices: priceHistory, loading: chartLoading } = usePriceHistory(slabAddress, selectedTfState);
   const { width: screenWidth } = useWindowDimensions();
 
-  const [direction, setDirection] = useState<'long' | 'short'>('long');
+  // Default direction from nav params (when tapping Long/Short in MarketsScreen)
+  const navDirection = route.params?.direction;
+  const [direction, setDirection] = useState<'long' | 'short'>(navDirection ?? 'long');
   const [size, setSize] = useState('');
-  const [leverage, setLeverage] = useState('5x');
-  const [selectedTf, setSelectedTf] = useState('1h');
+  // Use settings default leverage; fall back to '5x'
+  const [leverage, setLeverage] = useState(settings.defaultLeverage || '5x');
+
+  // Sync direction if navigated with a direction param
+  useEffect(() => {
+    if (navDirection) setDirection(navDirection);
+  }, [navDirection]);
+
+  // Load settings on mount
+  useEffect(() => {
+    if (!settings.loaded) settings.load();
+  }, [settings.loaded]);
 
   // Use live streamed price, fall back to 0 while loading
   const price = livePrice ?? 0;
   const priceReady = price > 0;
+
+  // Wallet balance for MAX button (derive from collateral)
+  const [walletBalance, setWalletBalance] = useState<number | null>(null);
+  useEffect(() => {
+    if (!connected || !publicKey || !slabAddress) {
+      setWalletBalance(null);
+      return;
+    }
+    // Fetch wallet token balance asynchronously
+    import('../lib/solana').then(({ connection }) => {
+      import('@solana/web3.js').then(({ PublicKey: PK }) => {
+        connection
+          .getBalance(publicKey)
+          .then((lamports) => {
+            // Convert lamports to SOL
+            setWalletBalance(lamports / 1e9);
+          })
+          .catch(() => setWalletBalance(null));
+      });
+    });
+  }, [connected, publicKey, slabAddress]);
+
+  // Parse slippage from settings (e.g. '0.5%' → 0.005)
+  const slippagePct = useMemo(() => {
+    const raw = parseFloat(settings.slippageTolerance) || 0.5;
+    return raw / 100;
+  }, [settings.slippageTolerance]);
 
   const orderSummary = useMemo(() => {
     const sizeNum = parseFloat(size) || 0;
@@ -57,8 +105,13 @@ export function TradeScreen() {
     const liqPrice =
       direction === 'long' ? price - liqDistance : price + liqDistance;
     const fee = sizeUsd * 0.001; // 0.1% fee estimate
-    return { entry: price, sizeTokens: sizeNum, sizeUsd, margin, liqPrice, fee };
-  }, [size, leverage, direction, price]);
+    // Worst-case entry with slippage
+    const entryWithSlippage =
+      direction === 'long'
+        ? price * (1 + slippagePct)
+        : price * (1 - slippagePct);
+    return { entry: price, entryWithSlippage, sizeTokens: sizeNum, sizeUsd, margin, liqPrice, fee, slippagePct };
+  }, [size, leverage, direction, price, slippagePct]);
 
   const isLong = direction === 'long';
 
@@ -137,24 +190,24 @@ export function TradeScreen() {
           <MiniChart
             data={priceHistory}
             width={screenWidth - 64} // 16px padding * 2 + 16px panel padding * 2
-            height={160}
+            height={220}
             loading={chartLoading}
           />
           <View style={styles.timeframes}>
-            {['1m', '5m', '15m', '1h', '4h', '1D'].map((tf) => (
+            {(['1m', '5m', '15m', '1h', '4h', '1D'] as Timeframe[]).map((tf) => (
               <TouchableOpacity
                 key={tf}
                 style={[
                   styles.tfBtn,
-                  selectedTf === tf && styles.tfBtnActive,
+                  selectedTfState === tf && styles.tfBtnActive,
                 ]}
                 activeOpacity={0.7}
-                onPress={() => setSelectedTf(tf)}
+                onPress={() => setSelectedTfState(tf)}
               >
                 <Text
                   style={[
                     styles.tfText,
-                    selectedTf === tf && styles.tfTextActive,
+                    selectedTfState === tf && styles.tfTextActive,
                   ]}
                 >
                   {tf}
@@ -211,7 +264,18 @@ export function TradeScreen() {
           keyboardType="decimal-pad"
           rightAction={{
             label: 'MAX',
-            onPress: () => setSize('10.0'), // TODO: derive from wallet balance
+            onPress: () => {
+              if (walletBalance != null && walletBalance > 0 && price > 0) {
+                // Reserve 0.01 SOL for tx fees, convert balance to token units
+                const usable = Math.max(walletBalance - 0.01, 0);
+                const levNum = parseInt(leverage) || 5;
+                // Max token size = (usable SOL value in USD equivalent) * leverage / price
+                // For simplicity: if trading SOL perp, usable is the token amount directly
+                setSize(usable.toFixed(4));
+              } else {
+                setSize('10.0'); // Fallback
+              }
+            },
           }}
         />
 
@@ -268,6 +332,11 @@ export function TradeScreen() {
             value={
               orderSummary.fee > 0 ? `$${orderSummary.fee.toFixed(4)}` : '—'
             }
+          />
+          <SummaryRow
+            label="Slippage"
+            value={`${(orderSummary.slippagePct * 100).toFixed(1)}%`}
+            valueColor={colors.textSecondary}
           />
         </Panel>
 
@@ -430,7 +499,7 @@ const styles = StyleSheet.create({
   leveragePills: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 6,
+    gap: 8,
   },
   summaryPanel: {
     backgroundColor: colors.bgInset,

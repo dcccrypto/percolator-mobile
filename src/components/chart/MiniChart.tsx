@@ -17,17 +17,23 @@ interface MiniChartProps {
   color?: string;
 }
 
+/** Minimum chart dimensions to ensure readability on high-DPI screens (e.g. Seeker ~480dpi) */
+const MIN_CHART_HEIGHT = 80;
+const MIN_CHART_WIDTH = 120;
+
 /**
  * Lightweight SVG line chart for price data.
  * Uses react-native-svg (already in deps) — no heavy chart library needed.
  */
 export function MiniChart({
   data,
-  width,
-  height,
+  width: rawWidth,
+  height: rawHeight,
   loading = false,
   color,
 }: MiniChartProps) {
+  const width = Math.max(rawWidth, MIN_CHART_WIDTH);
+  const height = Math.max(rawHeight, MIN_CHART_HEIGHT);
   const chartData = useMemo(() => {
     if (!data || data.length < 2) return null;
 
@@ -80,7 +86,7 @@ export function MiniChart({
 
   if (loading || !chartData) {
     return (
-      <View style={[styles.container, { width, height }]}>
+      <View style={[styles.container, { width, height: Math.max(height, MIN_CHART_HEIGHT) }]}>
         <ActivityIndicator color={colors.accent} size="small" />
         <Text style={styles.loadingText}>Loading chart…</Text>
       </View>

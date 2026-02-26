@@ -156,10 +156,21 @@ export function MarketCreationScreen() {
           </Panel>
         )}
 
-        {/* Cost estimate */}
-        <View style={styles.costRow}>
-          <Text style={styles.costLabel}>Estimated Cost:</Text>
-          <Text style={styles.costValue}>{estimatedCost}</Text>
+        {/* Cost breakdown */}
+        <View style={styles.costPanel}>
+          <Text style={styles.costPanelTitle}>Cost Breakdown</Text>
+          <View style={styles.costRow}>
+            <Text style={styles.costLabel}>Network fees</Text>
+            <Text style={styles.costValue}>{estimatedCost}</Text>
+          </View>
+          <View style={styles.costRow}>
+            <Text style={styles.costLabel}>Seed deposit</Text>
+            <Text style={styles.costValue}>Token-denominated</Text>
+          </View>
+          <Text style={styles.costNote}>
+            Seed liquidity is paid in your market's base token, not SOL or USDC.
+            Exact amount shown at confirmation.
+          </Text>
         </View>
 
         {/* Deploy step indicator */}
@@ -263,10 +274,26 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     letterSpacing: 2,
   },
+  costPanel: {
+    backgroundColor: colors.bgElevated,
+    borderRadius: radii.lg,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  costPanelTitle: {
+    fontFamily: fonts.body,
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: 12,
+  },
   costRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    marginBottom: 8,
   },
   costLabel: {
     fontFamily: fonts.body,
@@ -276,8 +303,15 @@ const styles = StyleSheet.create({
   costValue: {
     fontFamily: fonts.mono,
     fontSize: 14,
-    fontWeight: '600',
     color: colors.text,
+    fontVariant: ['tabular-nums'],
+  },
+  costNote: {
+    fontFamily: fonts.body,
+    fontSize: 11,
+    color: colors.textMuted,
+    marginTop: 8,
+    lineHeight: 16,
   },
   deployBtn: {
     backgroundColor: colors.accent,

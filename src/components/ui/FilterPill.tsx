@@ -1,6 +1,6 @@
 import React from 'react';
-import { TouchableOpacity, Text, StyleSheet } from 'react-native';
-import { colors, radii } from '../../theme/tokens';
+import { TouchableOpacity, Text, StyleSheet, Platform } from 'react-native';
+import { colors, radii, MIN_TAP_TARGET } from '../../theme/tokens';
 import { fonts } from '../../theme/fonts';
 
 interface FilterPillProps {
@@ -23,8 +23,10 @@ export function FilterPill({ label, active = false, onPress }: FilterPillProps) 
 
 const styles = StyleSheet.create({
   pill: {
-    height: 32,
+    minHeight: MIN_TAP_TARGET,
+    minWidth: MIN_TAP_TARGET,
     paddingHorizontal: 14,
+    paddingVertical: 6,
     justifyContent: 'center',
     alignItems: 'center',
     borderRadius: radii.full,
@@ -32,9 +34,21 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   active: {
-    backgroundColor: 'rgba(124, 58, 237, 0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(124, 58, 237, 0.25)',
+    backgroundColor: 'rgba(124, 58, 237, 0.28)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(124, 58, 237, 0.70)',
+    // iOS glow for better visibility on OLED
+    ...Platform.select({
+      ios: {
+        shadowColor: '#7c3aed',
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.4,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
   },
   text: {
     fontFamily: fonts.body,
@@ -43,5 +57,6 @@ const styles = StyleSheet.create({
   },
   activeText: {
     color: colors.accentLight,
+    fontWeight: '600',
   },
 });

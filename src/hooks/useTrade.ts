@@ -363,11 +363,11 @@ function buildTradeCpiIx(
     encU16LE(userIdx),
     encI128LE(sizeE6),
   );
+  // 7 accounts (PERC-199/207: clock sysvar removed — program uses Clock::get() syscall)
   return buildIx(programId, [
     meta(user, true, true),
     meta(lpOwner, false, false),
     meta(slab, false, true),
-    meta(SYSVAR_CLOCK_PUBKEY, false, false),
     meta(oracle, false, false),
     meta(matcherProg, false, false),
     meta(matcherCtx, false, true),

@@ -4,36 +4,40 @@
  */
 
 export const colors = {
-  // Backgrounds
-  bgVoid: '#06060c',
-  bg: '#111118',
-  bgElevated: '#1a1a28',
-  bgInset: '#0d0d14',
+  // Backgrounds — synced with web globals.css
+  bgVoid: '#06060C',
+  bg: '#0A0A0F',
+  bgElevated: '#0F1018',
+  bgInset: '#141820',
+  bgSurface: '#141820',
 
-  // Borders
-  border: 'rgba(255, 255, 255, 0.06)',
-  borderActive: 'rgba(255, 255, 255, 0.12)',
+  // Borders — solid hex to match web (no alpha stacking issues)
+  border: '#1C1F2E',
+  borderActive: '#2A2E42',
+  borderHover: '#2A2E42',
 
-  // Text
-  text: '#f0f0f5',
-  textSecondary: 'rgba(255, 255, 255, 0.55)',
-  textMuted: 'rgba(255, 255, 255, 0.30)',
+  // Text — solid hex to match web (consistent contrast on all surfaces)
+  text: '#E1E2E8',
+  textSecondary: '#7A7F96',
+  textMuted: '#454B5F',
+  textDim: '#2A2E3D',
 
-  // Accent
-  accent: '#7c3aed',
-  accentLight: '#a78bfa',
-  accentSubtle: 'rgba(124, 58, 237, 0.08)',
+  // Accent — Solana purple
+  accent: '#9945FF',
+  accentMuted: '#7B38CC',
+  accentSubtle: 'rgba(153, 69, 255, 0.06)',
 
-  // Trading
-  long: '#22c55e',
-  longSubtle: 'rgba(34, 197, 94, 0.08)',
-  short: '#ef4444',
-  shortSubtle: 'rgba(239, 68, 68, 0.08)',
-  warning: '#eab308',
-  warningSubtle: 'rgba(234, 179, 8, 0.08)',
+  // Trading — matches web identity
+  long: '#14F195',
+  longSubtle: 'rgba(20, 241, 149, 0.08)',
+  short: '#FF3B5C',
+  shortSubtle: 'rgba(255, 59, 92, 0.08)',
+  warning: '#E5A100',
+  warningSubtle: 'rgba(229, 161, 0, 0.08)',
 
-  // Highlights
-  cyan: '#22d3ee',
+  // Highlights — Solana green (same as --cyan on web)
+  cyan: '#14F195',
+  cyanMuted: 'rgba(20, 241, 149, 0.08)',
 } as const;
 
 export const spacing = {

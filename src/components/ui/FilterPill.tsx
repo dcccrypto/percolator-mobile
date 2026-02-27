@@ -34,13 +34,13 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   active: {
-    backgroundColor: 'rgba(124, 58, 237, 0.28)',
+    backgroundColor: colors.accentSubtle,
     borderWidth: 1.5,
-    borderColor: 'rgba(124, 58, 237, 0.70)',
+    borderColor: `${colors.accent}B2`, // ~70% opacity via hex alpha
     // iOS glow for better visibility on OLED
     ...Platform.select({
       ios: {
-        shadowColor: '#7c3aed',
+        shadowColor: colors.accent,
         shadowOffset: { width: 0, height: 0 },
         shadowOpacity: 0.4,
         shadowRadius: 8,
@@ -56,7 +56,7 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   activeText: {
-    color: colors.accentLight,
+    color: colors.accent,
     fontWeight: '600',
   },
 });

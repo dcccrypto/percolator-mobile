@@ -17,6 +17,8 @@ module.exports = {
   setupFiles: ['./jest.setup.js'],
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx'],
   testPathIgnorePatterns: ['/node_modules/', '/android/', '/ios/'],
+  // Run serially to prevent Zustand store pollution between test suites
+  maxWorkers: 1,
   collectCoverageFrom: [
     'src/**/*.{ts,tsx}',
     'App.tsx',

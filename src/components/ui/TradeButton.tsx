@@ -67,7 +67,7 @@ const styles = StyleSheet.create({
     fontFamily: fonts.display,
     fontSize: 16,
     fontWeight: '700',
-    color: '#ffffff',
+    color: colors.text,
   },
   textSm: {
     fontSize: 12,

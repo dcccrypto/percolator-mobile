@@ -24,6 +24,12 @@ describe('theme tokens', () => {
       // Trading
       expect(colors.long).toBeDefined();
       expect(colors.short).toBeDefined();
+      expect(colors.shortBorder).toBeDefined();
+      expect(colors.warningBorder).toBeDefined();
+
+      // Overlays & pill-specific
+      expect(colors.bgOverlay).toBeDefined();
+      expect(colors.accentPillBg).toBeDefined();
     });
 
     it('bg is a valid hex color', () => {

@@ -2,6 +2,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Text, ActivityIndicator, View } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import * as SecureStore from 'expo-secure-store';
 
 import { MarketsScreen } from '../screens/MarketsScreen';
@@ -19,16 +20,18 @@ const Tab = createBottomTabNavigator();
 const MoreStack = createNativeStackNavigator();
 
 function TabIcon({ label, focused }: { label: string; focused: boolean }) {
-  const icons: Record<string, string> = {
-    Markets: '🏠',
-    Trade: '📊',
-    Portfolio: '💼',
-    More: '⚙',
+  const icons: Record<string, React.ComponentProps<typeof Ionicons>['name']> = {
+    Markets: 'trending-up',
+    Trade: 'bar-chart',
+    Portfolio: 'briefcase',
+    More: 'menu',
   };
   return (
-    <Text style={{ fontSize: 20, opacity: focused ? 1 : 0.5 }}>
-      {icons[label] ?? '●'}
-    </Text>
+    <Ionicons
+      name={icons[label] ?? 'ellipse'}
+      size={22}
+      color={focused ? colors.accent : colors.textMuted}
+    />
   );
 }
 

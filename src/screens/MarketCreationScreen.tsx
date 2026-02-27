@@ -215,7 +215,7 @@ export function MarketCreationScreen() {
             disabled={deployState.deploying}
           >
             {connecting ? (
-              <ActivityIndicator color="#ffffff" size="small" />
+              <ActivityIndicator color={colors.text} size="small" />
             ) : (
               <Text style={styles.deployText}>
                 {!connected
@@ -327,7 +327,7 @@ const styles = StyleSheet.create({
     fontFamily: fonts.display,
     fontSize: 16,
     fontWeight: '700',
-    color: '#ffffff',
+    color: colors.text,
   },
   stepRow: {
     flexDirection: 'row',

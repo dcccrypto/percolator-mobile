@@ -512,7 +512,7 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   posCloseBtn: {
-    borderColor: 'rgba(239, 68, 68, 0.3)',
+    borderColor: colors.shortBorder,
   },
   posCloseText: {
     fontFamily: fonts.display,
@@ -521,14 +521,14 @@ const styles = StyleSheet.create({
     color: colors.short,
   },
   liqWarning: {
-    backgroundColor: 'rgba(234, 179, 8, 0.08)',
+    backgroundColor: colors.warningSubtle,
     borderLeftWidth: 2,
     borderLeftColor: colors.warning,
     borderRadius: radii.sm,
     padding: 8,
   },
   liqCritical: {
-    backgroundColor: 'rgba(239, 68, 68, 0.08)',
+    backgroundColor: colors.shortSubtle,
     borderLeftColor: colors.short,
   },
   liqWarningText: {

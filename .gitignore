@@ -5,6 +5,7 @@ dist/
 *.p8
 *.p12
 *.key
+*.keystore
 *.mobileprovision
 *.orig.*
 web-build/

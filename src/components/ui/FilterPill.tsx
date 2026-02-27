@@ -34,7 +34,7 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   active: {
-    backgroundColor: colors.accentSubtle,
+    backgroundColor: colors.accentPillBg,
     borderWidth: 1.5,
     borderColor: `${colors.accent}B2`, // ~70% opacity via hex alpha
     // iOS glow for better visibility on OLED

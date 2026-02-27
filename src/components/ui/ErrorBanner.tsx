@@ -47,7 +47,7 @@ const styles = StyleSheet.create({
   },
   warning: {
     backgroundColor: colors.warningSubtle,
-    borderBottomColor: 'rgba(229, 161, 0, 0.2)',
+    borderBottomColor: colors.warningBorder,
   },
   error: {
     backgroundColor: colors.shortSubtle,

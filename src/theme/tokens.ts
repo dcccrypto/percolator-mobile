@@ -26,6 +26,7 @@ export const colors = {
   accent: '#9945FF',
   accentMuted: '#7B38CC',
   accentSubtle: 'rgba(153, 69, 255, 0.06)',
+  accentPillBg: 'rgba(153, 69, 255, 0.18)',
 
   // Trading — matches web identity
   long: '#14F195',
@@ -35,8 +36,12 @@ export const colors = {
   shortBorder: 'rgba(255, 59, 92, 0.3)',
   warning: '#E5A100',
   warningSubtle: 'rgba(229, 161, 0, 0.08)',
+  warningBorder: 'rgba(229, 161, 0, 0.2)',
 
-  // Highlights — Solana green (same as --cyan on web)
+  // Highlights — Solana green (same as --cyan on web).
+  // NOTE: cyan and long are intentionally aliased to the same Solana green
+  // (#14F195). cyan = UI highlights, long = buy-side trading. Kept as
+  // separate semantic tokens so either can diverge independently later.
   cyan: '#14F195',
   cyanMuted: 'rgba(20, 241, 149, 0.08)',
 

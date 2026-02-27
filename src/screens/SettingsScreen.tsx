@@ -286,7 +286,7 @@ const styles = StyleSheet.create({
   },
   disconnectBtn: {
     borderWidth: 1,
-    borderColor: 'rgba(239, 68, 68, 0.3)',
+    borderColor: colors.shortBorder,
     borderRadius: radii.lg,
     height: 48,
     justifyContent: 'center',

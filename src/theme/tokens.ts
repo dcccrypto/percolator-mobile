@@ -32,12 +32,16 @@ export const colors = {
   longSubtle: 'rgba(20, 241, 149, 0.08)',
   short: '#FF3B5C',
   shortSubtle: 'rgba(255, 59, 92, 0.08)',
+  shortBorder: 'rgba(255, 59, 92, 0.3)',
   warning: '#E5A100',
   warningSubtle: 'rgba(229, 161, 0, 0.08)',
 
   // Highlights — Solana green (same as --cyan on web)
   cyan: '#14F195',
   cyanMuted: 'rgba(20, 241, 149, 0.08)',
+
+  // Overlays
+  bgOverlay: 'rgba(255, 255, 255, 0.06)',
 } as const;
 
 export const spacing = {

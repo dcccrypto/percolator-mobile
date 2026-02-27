@@ -305,7 +305,7 @@ const styles = StyleSheet.create({
   oiBar: {
     height: 4,
     borderRadius: 2,
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: colors.bgOverlay,
     overflow: 'hidden',
   },
   oiFill: {

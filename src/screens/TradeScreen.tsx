@@ -230,7 +230,7 @@ export function TradeScreen() {
             <Text
               style={[
                 styles.directionText,
-                isLong ? { color: '#ffffff' } : { color: colors.textMuted },
+                isLong ? { color: colors.text } : { color: colors.textMuted },
               ]}
             >
               LONG ▲
@@ -247,7 +247,7 @@ export function TradeScreen() {
             <Text
               style={[
                 styles.directionText,
-                !isLong ? { color: '#ffffff' } : { color: colors.textMuted },
+                !isLong ? { color: colors.text } : { color: colors.textMuted },
               ]}
             >
               SHORT ▼
@@ -470,7 +470,7 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   tfTextActive: {
-    color: '#ffffff',
+    color: colors.text,
   },
   directionToggle: {
     flexDirection: 'row',

@@ -190,7 +190,7 @@ const styles = StyleSheet.create({
     fontFamily: fonts.display,
     fontSize: 16,
     fontWeight: '700',
-    color: '#ffffff',
+    color: colors.text,
   },
   // Wallet screen
   walletScreen: {
@@ -234,7 +234,7 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   recommendedBadge: {
-    backgroundColor: 'rgba(34, 197, 94, 0.12)',
+    backgroundColor: colors.longSubtle,
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: radii.full,

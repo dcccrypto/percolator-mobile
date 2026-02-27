@@ -143,7 +143,7 @@ export function CollateralScreen() {
         activeOpacity={0.8}
       >
         {submitting ? (
-          <ActivityIndicator color="#ffffff" size="small" />
+          <ActivityIndicator color={colors.text} size="small" />
         ) : (
           <Text style={styles.submitText}>
             {mode === 'deposit' ? 'Deposit Collateral ↓' : 'Withdraw Collateral ↑'}
@@ -213,7 +213,7 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   infoBanner: {
-    backgroundColor: 'rgba(34, 211, 238, 0.06)',
+    backgroundColor: colors.cyanMuted,
     borderRadius: radii.md,
     padding: 12,
     marginBottom: 16,
@@ -247,6 +247,6 @@ const styles = StyleSheet.create({
     fontFamily: fonts.display,
     fontSize: 16,
     fontWeight: '700',
-    color: '#ffffff',
+    color: colors.text,
   },
 });

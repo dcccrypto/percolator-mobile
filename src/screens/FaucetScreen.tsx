@@ -155,7 +155,7 @@ export function FaucetScreen() {
         disabled={!connected || minting}
       >
         {minting ? (
-          <ActivityIndicator color="#ffffff" size="small" />
+          <ActivityIndicator color={colors.text} size="small" />
         ) : (
           <Text style={styles.mintText}>
             {selectedToken === 'sol' ? 'Airdrop SOL 💧' : 'Mint Tokens 💧'}
@@ -271,7 +271,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   infoBanner: {
-    backgroundColor: 'rgba(34, 211, 238, 0.06)',
+    backgroundColor: colors.cyanMuted,
     borderRadius: radii.md,
     padding: 12,
     marginBottom: 16,
@@ -295,7 +295,7 @@ const styles = StyleSheet.create({
     fontFamily: fonts.display,
     fontSize: 16,
     fontWeight: '700',
-    color: '#ffffff',
+    color: colors.text,
   },
   hint: {
     fontFamily: fonts.body,

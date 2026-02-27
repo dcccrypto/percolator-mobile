@@ -56,7 +56,7 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   activeText: {
-    color: colors.accentMuted,
+    color: colors.accent,
     fontWeight: '600',
   },
 });

@@ -19,7 +19,7 @@ describe('theme tokens', () => {
 
       // Accent
       expect(colors.accent).toBeDefined();
-      expect(colors.accentLight).toBeDefined();
+      expect(colors.accentMuted).toBeDefined();
 
       // Trading
       expect(colors.long).toBeDefined();
@@ -30,13 +30,13 @@ describe('theme tokens', () => {
       expect(colors.bg).toMatch(/^#[0-9a-fA-F]{6}$/);
     });
 
-    it('accent is purple (#7c3aed)', () => {
-      expect(colors.accent).toBe('#7c3aed');
+    it('accent is Solana purple (#9945FF)', () => {
+      expect(colors.accent).toBe('#9945FF');
     });
 
-    it('long is green and short is red', () => {
-      expect(colors.long).toBe('#22c55e');
-      expect(colors.short).toBe('#ef4444');
+    it('long is Solana green and short is brand red', () => {
+      expect(colors.long).toBe('#14F195');
+      expect(colors.short).toBe('#FF3B5C');
     });
   });
 

@@ -6,6 +6,7 @@ dist/
 *.p12
 *.key
 *.keystore
+keystore.properties
 *.mobileprovision
 *.orig.*
 web-build/

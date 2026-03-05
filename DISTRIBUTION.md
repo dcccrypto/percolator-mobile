@@ -4,15 +4,26 @@
 
 **Latest Release:** [GitHub Releases](https://github.com/dcccrypto/percolator-mobile/releases/latest)
 
-Download `percolator-v1.0.0.apk` and install it on any Android device (Android 7.0+).
+Download `app-release.apk` (or `percolator-v<version>.apk`) and install it on any Android device (Android 7.0+).
 
-### Installation Steps
+### Installation Steps — Fresh Install
 
 1. Download the APK from the link above
 2. On your Android device, go to **Settings → Security → Install unknown apps**
 3. Allow your browser or file manager to install apps
 4. Open the downloaded APK and tap **Install**
 5. Launch **Percolator** from your app drawer
+
+### ⚠️ Upgrading from v1.0.0
+
+If you have v1.0.0 installed (package ID: `com.percolatormobile`), you **must uninstall it first** before installing v1.0.1+. The package ID changed from `com.percolatormobile` → `com.percolator.seeker` which requires a clean reinstall.
+
+```
+1. Go to Settings → Apps → percolator-mobile → Uninstall
+2. Then follow the fresh install steps above
+```
+
+This is a one-time step. Future updates will install over the top without uninstalling.
 
 ---
 

@@ -28,3 +28,8 @@ ios/build/
 
 # Metro
 .metro-health-check*
+
+# Build artifacts
+*.apk
+*.aab
+*.ipa

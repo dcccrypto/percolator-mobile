@@ -52,7 +52,12 @@ function MarketCard({
 }) {
   const changeColor = market.change24h >= 0 ? colors.long : colors.short;
   const changePrefix = market.change24h >= 0 ? '+' : '';
-  const oiPct = Math.min((market.totalOpenInterest ?? 0) / 5_000_000, 1);
+  const maxOi = (market as any).maxOpenInterest ?? 5_000_000;
+  const oiPct = Math.min((market.totalOpenInterest ?? 0) / maxOi, 1);
+  const oiFillColor =
+    oiPct < 0.5 ? colors.accent :
+    oiPct < 0.8 ? colors.warning :
+    colors.short;
 
   return (
     <Panel style={styles.card}>
@@ -71,8 +76,12 @@ function MarketCard({
         <Text style={styles.leverage}>{market.maxLeverage}x max</Text>
       </View>
 
+      <View style={styles.oiLabelRow}>
+        <Text style={styles.oiLabel}>OI Utilization</Text>
+        <Text style={styles.oiPctText}>{Math.round(oiPct * 100)}%</Text>
+      </View>
       <View style={styles.oiBar}>
-        <View style={[styles.oiFill, { width: `${oiPct * 100}%` }]} />
+        <View style={[styles.oiFill, { width: `${oiPct * 100}%`, backgroundColor: oiFillColor }]} />
       </View>
 
       <View style={styles.tradeRow}>
@@ -301,6 +310,24 @@ const styles = StyleSheet.create({
     fontFamily: fonts.mono,
     fontSize: 11,
     color: colors.textMuted,
+  },
+  oiLabelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  oiLabel: {
+    fontFamily: fonts.body,
+    fontSize: 10,
+    color: colors.textMuted,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
+  oiPctText: {
+    fontFamily: fonts.body,
+    fontSize: 10,
+    color: colors.textSecondary,
   },
   oiBar: {
     height: 4,

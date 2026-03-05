@@ -11,6 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, radii } from '../theme/tokens';
 import { fonts } from '../theme/fonts';
 import { useMWA } from '../hooks/useMWA';
+import { OnboardingIcon } from '../components/icons/OnboardingIcon';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -18,17 +19,17 @@ const SLIDES = [
   {
     title: 'Permissionless Perps\non Solana',
     subtitle: 'Trade any asset with leverage. No gatekeepers. No KYC.',
-    icon: '⚡',
+    icon: 'perps' as const,
   },
   {
     title: 'Fully On-Chain',
     subtitle: 'Every trade, every position — verifiable on Solana.',
-    icon: '🔗',
+    icon: 'onchain' as const,
   },
   {
     title: 'Deploy in 60s',
     subtitle: 'Create your own perpetual market in under a minute.',
-    icon: '🚀',
+    icon: 'deploy' as const,
   },
 ];
 
@@ -102,7 +103,9 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
         keyExtractor={(_, i) => String(i)}
         renderItem={({ item }) => (
           <View style={[styles.slide, { width: SCREEN_WIDTH }]}>
-            <Text style={styles.slideIcon}>{item.icon}</Text>
+            <View style={styles.slideIconWrap}>
+              <OnboardingIcon type={item.icon} size={72} />
+            </View>
             <Text style={styles.slideTitle}>{item.title}</Text>
             <Text style={styles.slideSubtitle}>{item.subtitle}</Text>
           </View>
@@ -142,9 +145,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 40,
   },
-  slideIcon: {
-    fontSize: 64,
+  slideIconWrap: {
     marginBottom: 24,
+    alignItems: 'center' as const,
   },
   slideTitle: {
     fontFamily: fonts.display,

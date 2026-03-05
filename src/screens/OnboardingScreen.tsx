@@ -103,7 +103,7 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
         keyExtractor={(_, i) => String(i)}
         renderItem={({ item }) => (
           <View style={[styles.slide, { width: SCREEN_WIDTH }]}>
-            <View style={styles.slideIconWrap}>
+            <View style={styles.slideIconWrap} testID={`slide-icon-${item.icon}`}>
               <OnboardingIcon type={item.icon} size={72} />
             </View>
             <Text style={styles.slideTitle}>{item.title}</Text>

@@ -52,10 +52,11 @@ describe('OnboardingScreen', () => {
   });
 
   it('renders slide icons', () => {
-    const { getByText } = render(
+    const { getByTestId } = render(
       <OnboardingScreen onComplete={mockOnComplete} />,
     );
-    expect(getByText('⚡')).toBeTruthy();
+    // Slide icons are SVG components (OnboardingIcon) since PERC-427 replaced emoji
+    expect(getByTestId('slide-icon-perps')).toBeTruthy();
   });
 
   it('has a "Get Started" or "Connect Wallet" button', () => {

@@ -2,7 +2,7 @@
   "expo": {
     "name": "percolator-mobile",
     "slug": "percolator-mobile",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "splash": {
@@ -16,7 +16,7 @@
     },
     "android": {
       "package": "com.percolator.seeker",
-      "versionCode": 2,
+      "versionCode": 3,
       "minSdkVersion": 24,
       "targetSdkVersion": 34,
       "adaptiveIcon": {

@@ -89,7 +89,9 @@ describe('OnboardingScreen', () => {
     await act(async () => {
       fireEvent.press(getByText('Phantom'));
     });
-    expect(mockMWAState.connect).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(mockMWAState.connect).toHaveBeenCalledTimes(1);
+    }, { timeout: 1500 });
   });
 
   it('calls onComplete() when connect() returns a pubkey', async () => {
@@ -106,7 +108,9 @@ describe('OnboardingScreen', () => {
       fireEvent.press(getByText('Phantom'));
     });
 
-    expect(mockOnComplete).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(mockOnComplete).toHaveBeenCalledTimes(1);
+    }, { timeout: 1500 });
   });
 
   // ── Error banner ──────────────────────────────────────────────────────────

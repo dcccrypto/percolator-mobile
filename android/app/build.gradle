@@ -87,13 +87,13 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace "com.percolatormobile"
+    namespace 'com.percolator.seeker'
     defaultConfig {
-        applicationId "com.percolator.seeker"
+        applicationId 'com.percolator.seeker'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 2
-        versionName "1.0.1"
+        versionCode 3
+        versionName "1.0.2"
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
     }
@@ -104,33 +104,15 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
-        release {
-            def keystorePropertiesFile = rootProject.file("keystore.properties")
-            if (keystorePropertiesFile.exists()) {
-                def keystoreProperties = new Properties()
-                keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
-                storeFile file(keystoreProperties['storeFile'] ?: 'percolator-release.keystore')
-                storePassword keystoreProperties['storePassword']
-                keyAlias keystoreProperties['keyAlias'] ?: 'percolator-release'
-                keyPassword keystoreProperties['keyPassword']
-            } else if (System.getenv('PERCOLATOR_KEYSTORE_PASSWORD')) {
-                storeFile file('percolator-release.keystore')
-                storePassword System.getenv('PERCOLATOR_KEYSTORE_PASSWORD')
-                keyAlias System.getenv('PERCOLATOR_KEY_ALIAS') ?: 'percolator-release'
-                keyPassword System.getenv('PERCOLATOR_KEY_PASSWORD')
-            } else {
-                // No signing credentials — release build will fail with a clear error.
-                // See keystore.properties.example for setup instructions.
-                logger.warn("WARNING: No release signing config found. Set up keystore.properties or PERCOLATOR_KEYSTORE_PASSWORD env var.")
-            }
-        }
     }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
         }
         release {
-            signingConfig signingConfigs.release
+            // Caution! In production, you need to generate your own keystore file.
+            // see https://reactnative.dev/docs/signed-apk-android.
+            signingConfig signingConfigs.debug
             def enableShrinkResources = findProperty('android.enableShrinkResourcesInReleaseBuilds') ?: 'false'
             shrinkResources enableShrinkResources.toBoolean()
             minifyEnabled enableMinifyInReleaseBuilds

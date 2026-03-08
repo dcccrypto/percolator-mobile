@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRoute, RouteProp } from '@react-navigation/native';
+import * as Haptics from 'expo-haptics';
 import { colors, radii } from '../theme/tokens';
 import { fonts } from '../theme/fonts';
 import { Panel } from '../components/ui/Panel';
@@ -19,10 +20,12 @@ import { TradeButton } from '../components/ui/TradeButton';
 import { FilterPill } from '../components/ui/FilterPill';
 import { ErrorBanner } from '../components/ui/ErrorBanner';
 import { MiniChart } from '../components/chart/MiniChart';
+import { SuccessToast } from '../components/trade/SuccessToast';
 import { useMWA } from '../hooks/useMWA';
 import { usePriceStream as usePriceStreamMulti } from '../hooks/usePriceStream';
 import { usePriceHistory, type Timeframe } from '../hooks/usePriceHistory';
 import { useTrade } from '../hooks/useTrade';
+import { usePriceFlash } from '../hooks/usePriceFlash';
 import { useMarketStore } from '../store/marketStore';
 import { useSettingsStore } from '../store/settingsStore';
 
@@ -66,6 +69,15 @@ export function TradeScreen() {
   // Use live streamed price, fall back to 0 while loading
   const price = livePrice ?? 0;
   const priceReady = price > 0;
+
+  // Price flash effect (green/red on change)
+  const priceFlash = usePriceFlash(livePrice);
+
+  // Success toast state
+  const [toast, setToast] = useState<{ visible: boolean; sig: string | null }>({
+    visible: false,
+    sig: null,
+  });
 
   // Wallet balance for MAX button (derive from collateral)
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
@@ -149,11 +161,8 @@ export function TradeScreen() {
             });
 
             if (result) {
-              Alert.alert(
-                '✅ Position Opened',
-                `Tx: ${result.signature.slice(0, 16)}…`,
-                [{ text: 'OK' }],
-              );
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              setToast({ visible: true, sig: result.signature });
               setSize(''); // reset form
             }
           },
@@ -164,12 +173,32 @@ export function TradeScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
+      <SuccessToast
+        visible={toast.visible}
+        txSignature={toast.sig}
+        message={`${direction.toUpperCase()} position opened!`}
+        onDismiss={() => setToast({ visible: false, sig: null })}
+      />
+
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.title}>{symbol}</Text>
         {priceReady ? (
-          <Text style={[styles.price, { color: colors.long }]}>
-            ${price.toFixed(price < 1 ? 6 : 2)} ↑
+          <Text
+            style={[
+              styles.price,
+              {
+                color:
+                  priceFlash === 'up'
+                    ? colors.long
+                    : priceFlash === 'down'
+                    ? colors.short
+                    : colors.text,
+              },
+            ]}
+          >
+            ${price.toFixed(price < 1 ? 6 : 2)}{' '}
+            {priceFlash === 'up' ? '↑' : priceFlash === 'down' ? '↓' : ''}
           </Text>
         ) : (
           <ActivityIndicator color={colors.accent} size="small" />
@@ -224,7 +253,10 @@ export function TradeScreen() {
               styles.directionBtn,
               isLong && { backgroundColor: colors.long },
             ]}
-            onPress={() => setDirection('long')}
+            onPress={() => {
+              setDirection('long');
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            }}
             activeOpacity={0.8}
           >
             <Text
@@ -241,7 +273,10 @@ export function TradeScreen() {
               styles.directionBtn,
               !isLong && { backgroundColor: colors.short },
             ]}
-            onPress={() => setDirection('short')}
+            onPress={() => {
+              setDirection('short');
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            }}
             activeOpacity={0.8}
           >
             <Text

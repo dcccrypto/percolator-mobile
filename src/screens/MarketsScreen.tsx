@@ -223,6 +223,15 @@ export function MarketsScreen() {
               <Text style={styles.emptyText}>
                 {search ? `No markets matching "${search}"` : 'No markets available'}
               </Text>
+              {search ? (
+                <TouchableOpacity
+                  style={styles.clearSearchBtn}
+                  onPress={() => setSearch('')}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.clearSearchText}>Clear Search</Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
           }
         />
@@ -342,7 +351,19 @@ const styles = StyleSheet.create({
   },
   tradeRow: { flexDirection: 'row', gap: 8 },
   tradeBtn: { flex: 1 },
-  empty: { alignItems: 'center', paddingTop: 40 },
+  empty: { alignItems: 'center', paddingTop: 40, gap: 12 },
+  clearSearchBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.borderActive,
+  },
+  clearSearchText: {
+    fontFamily: fonts.body,
+    fontSize: 13,
+    color: colors.textSecondary,
+  },
   emptyText: {
     fontFamily: fonts.body,
     fontSize: 14,

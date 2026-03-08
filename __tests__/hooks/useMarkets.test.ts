@@ -11,11 +11,20 @@ jest.mock('../../src/lib/api', () => ({
   },
 }));
 
+// Clear SecureStore cache between tests so cached markets don't leak
+const SecureStore = require('expo-secure-store');
+
 import { useMarkets } from '../../src/hooks/useMarkets';
 
 describe('useMarkets', () => {
   beforeEach(() => {
     mockGetMarkets.mockReset();
+    // Reset the SecureStore mock store to prevent cache leaking between tests
+    if (SecureStore.__reset) {
+      SecureStore.__reset();
+    } else if (SecureStore.deleteItemAsync) {
+      SecureStore.deleteItemAsync('percolator_markets_cache').catch(() => {});
+    }
   });
 
   it('starts with loading = true', () => {

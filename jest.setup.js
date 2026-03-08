@@ -16,6 +16,7 @@ jest.mock('expo-secure-store', () => ({
     delete store[key];
     return Promise.resolve();
   }),
+  __reset: () => { Object.keys(store).forEach((k) => delete store[k]); },
 }));
 
 // --------------------------------------------------------------------------

@@ -169,7 +169,7 @@ describe('OnboardingScreen', () => {
     });
   });
 
-  it('error banner: shows raw error message for unknown errors', async () => {
+  it('error banner: shows generic message for unknown errors (issue #42 — no raw SDK strings)', async () => {
     mockMWAState.error = 'Network timeout';
 
     const { getByText } = render(<OnboardingScreen onComplete={mockOnComplete} />);
@@ -178,7 +178,8 @@ describe('OnboardingScreen', () => {
     });
 
     await waitFor(() => {
-      expect(getByText('Network timeout')).toBeTruthy();
+      // Raw SDK error strings are sanitized — generic message shown instead
+      expect(getByText('Wallet connection failed. Please try again.')).toBeTruthy();
     });
   });
 

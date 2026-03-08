@@ -47,16 +47,17 @@ describe('SuccessToast', () => {
       <SuccessToast visible={true} txSignature={null} onDismiss={onDismiss} />,
     );
     expect(getByText('Trade submitted!')).toBeTruthy();
-    expect(queryByText(/Solscan/)).toBeNull();
+    // No explorer link when txSignature is null
+    expect(queryByText(/View on/)).toBeNull();
   });
 
-  it('uses devnet cluster param by default', () => {
+  it('shows explorer link when txSignature is provided', () => {
     const sig = 'testsig123456789abcdefgh12345678';
     const { getByText } = render(
       <SuccessToast visible={true} txSignature={sig} onDismiss={onDismiss} />,
     );
-    // The explorer link text should exist
-    expect(getByText(/View on Solscan/)).toBeTruthy();
+    // Explorer link should exist — label depends on default explorer (SolanaFM)
+    expect(getByText(/View on (SolanaFM|Solscan|Explorer)/)).toBeTruthy();
   });
 
   it('auto-dismisses after duration', () => {

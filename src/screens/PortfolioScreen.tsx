@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,10 +11,15 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import BottomSheet from '@gorhom/bottom-sheet';
+import * as Haptics from 'expo-haptics';
 import { colors, radii } from '../theme/tokens';
 import { fonts } from '../theme/fonts';
 import { FilterPill } from '../components/ui/FilterPill';
 import { ErrorBanner } from '../components/ui/ErrorBanner';
+import { PartialCloseSheet } from '../components/trade/PartialCloseSheet';
+import { PositionDetailSheet } from '../components/trade/PositionDetailSheet';
 import { useMWA } from '../hooks/useMWA';
 import { usePositions, type Position } from '../hooks/usePositions';
 import { useTrade } from '../hooks/useTrade';
@@ -185,56 +190,65 @@ export function PortfolioScreen() {
   const navigation = useNavigation<any>();
   const { submitTrade, submitting } = useTrade();
 
+  // Bottom sheet refs
+  const detailSheetRef = useRef<BottomSheet>(null);
+  const closeSheetRef = useRef<BottomSheet>(null);
+  const [selectedPosition, setSelectedPosition] = useState<Position | null>(null);
+
   const { positions, loading, error, refresh } = usePositions(
     connected && publicKey ? publicKey.toBase58() : null,
   );
 
-  /** Navigate to the Trade tab with the position's market selected for adjustment. */
+  /** Open the position detail sheet. */
   const handleManage = useCallback(
     (position: Position) => {
-      navigation.navigate('Trade', {
-        direction: position.direction,
-      });
+      setSelectedPosition(position);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      detailSheetRef.current?.snapToIndex(0);
     },
-    [navigation],
+    [],
   );
 
-  /** Show confirmation dialog and close the position by submitting a counter-trade. */
-  const handleClose = useCallback(
+  /** Open partial close sheet. */
+  const handleOpenPartialClose = useCallback(
     (position: Position) => {
-      const sizeUsd = position.capital * position.leverage;
-      Alert.alert(
-        'Close Position',
-        `Close your ${position.direction.toUpperCase()} ${position.symbol} position?\n\nSize: ${position.size.toFixed(4)}\nPnL: ${position.pnl >= 0 ? '+' : ''}$${position.pnl.toFixed(2)}`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Close Position',
-            style: 'destructive',
-            onPress: async () => {
-              try {
-                // position.id is `${slabAddress}:${accountId}`
-                const userIdx = parseInt(position.id.split(':')[1], 10);
-                await submitTrade({
-                  slabAddress: position.slabAddress,
-                  userIdx,
-                  sizeUsd,
-                  direction: position.direction === 'long' ? 'short' : 'long',
-                });
-                Alert.alert('✅ Position Closed', `${position.symbol} position closed.`);
-                refresh();
-              } catch (err) {
-                Alert.alert(
-                  'Failed to close',
-                  err instanceof Error ? err.message : 'Unknown error',
-                );
-              }
-            },
-          },
-        ],
-      );
+      setSelectedPosition(position);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      closeSheetRef.current?.snapToIndex(0);
+    },
+    [],
+  );
+
+  /** Execute partial close. */
+  const handlePartialClose = useCallback(
+    async (position: Position, sizeToClose: number) => {
+      try {
+        const userIdx = parseInt(position.id.split(':')[1], 10);
+        const pricePerUnit = position.currentPrice || position.entryPrice;
+        const sizeUsd = sizeToClose * pricePerUnit;
+        await submitTrade({
+          slabAddress: position.slabAddress,
+          userIdx,
+          sizeUsd,
+          direction: position.direction === 'long' ? 'short' : 'long',
+        });
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        Alert.alert('✅ Position Closed', `Closed ${sizeToClose.toFixed(4)} of ${position.symbol}.`);
+        closeSheetRef.current?.close();
+        refresh();
+      } catch (err) {
+        Alert.alert('Failed to close', err instanceof Error ? err.message : 'Unknown error');
+      }
     },
     [submitTrade, refresh],
+  );
+
+  /** Open partial close sheet for the position (supports full and partial close). */
+  const handleClose = useCallback(
+    (position: Position) => {
+      handleOpenPartialClose(position);
+    },
+    [handleOpenPartialClose],
   );
 
   // Summary stats
@@ -265,6 +279,7 @@ export function PortfolioScreen() {
         : EmptyOrders;
 
   return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header with total PnL */}
       <View style={styles.header}>
@@ -347,7 +362,19 @@ export function PortfolioScreen() {
         )}
         ListEmptyComponent={!loading ? <TabEmptyComponent /> : null}
       />
+
+      {/* Position Detail Sheet */}
+      <PositionDetailSheet ref={detailSheetRef} position={selectedPosition} />
+
+      {/* Partial Close Sheet */}
+      <PartialCloseSheet
+        ref={closeSheetRef}
+        position={selectedPosition}
+        submitting={submitting}
+        onClose={handlePartialClose}
+      />
     </SafeAreaView>
+    </GestureHandlerRootView>
   );
 }
 

@@ -137,3 +137,59 @@ jest.mock('expo-font', () => ({
 jest.mock('expo-status-bar', () => ({
   StatusBar: () => null,
 }));
+
+// --------------------------------------------------------------------------
+// expo-haptics mock
+// --------------------------------------------------------------------------
+jest.mock('expo-haptics', () => ({
+  impactAsync: jest.fn(() => Promise.resolve()),
+  notificationAsync: jest.fn(() => Promise.resolve()),
+  selectionAsync: jest.fn(() => Promise.resolve()),
+  ImpactFeedbackStyle: { Light: 'light', Medium: 'medium', Heavy: 'heavy' },
+  NotificationFeedbackType: { Success: 'success', Warning: 'warning', Error: 'error' },
+}));
+
+// --------------------------------------------------------------------------
+// @gorhom/bottom-sheet mock
+// --------------------------------------------------------------------------
+jest.mock('@gorhom/bottom-sheet', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+  const BottomSheet = React.forwardRef((props, ref) => {
+    React.useImperativeHandle(ref, () => ({
+      snapToIndex: jest.fn(),
+      close: jest.fn(),
+      expand: jest.fn(),
+      collapse: jest.fn(),
+    }));
+    return props.index >= 0 ? React.createElement(View, null, props.children) : null;
+  });
+  BottomSheet.displayName = 'BottomSheet';
+  return {
+    __esModule: true,
+    default: BottomSheet,
+    BottomSheetView: ({ children }) => React.createElement(View, null, children),
+  };
+});
+
+// --------------------------------------------------------------------------
+// react-native-gesture-handler mock
+// --------------------------------------------------------------------------
+jest.mock('react-native-gesture-handler', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+  return {
+    GestureHandlerRootView: ({ children, ...props }) =>
+      React.createElement(View, props, children),
+    Swipeable: View,
+    DrawerLayout: View,
+    State: {},
+    PanGestureHandler: View,
+    TapGestureHandler: View,
+    FlingGestureHandler: View,
+    LongPressGestureHandler: View,
+    NativeViewGestureHandler: View,
+    gestureHandlerRootHOC: (comp) => comp,
+    Directions: {},
+  };
+});

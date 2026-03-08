@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   FlatList,
   Dimensions,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, radii } from '../theme/tokens';
@@ -46,10 +47,25 @@ interface OnboardingScreenProps {
 export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [showWallets, setShowWallets] = useState(false);
-  const { connect, connecting } = useMWA();
+  const [connectError, setConnectError] = useState<string | null>(null);
+  const { connect, connecting, error: mwaError } = useMWA();
   const flatListRef = useRef<FlatList>(null);
 
+  React.useEffect(() => {
+    if (!mwaError) return;
+    if (mwaError.includes('WALLET_NOT_FOUND') || mwaError.includes('Found no installed wallet')) {
+      setConnectError(
+        'No compatible wallet app found. Please install Phantom or Solflare from the Play Store and try again.',
+      );
+    } else if (mwaError.includes('CANCELED') || mwaError.includes('cancelled')) {
+      setConnectError('Wallet connection was cancelled.');
+    } else {
+      setConnectError(mwaError);
+    }
+  }, [mwaError]);
+
   const handleConnect = async () => {
+    setConnectError(null);
     const pubkey = await connect();
     if (pubkey) onComplete();
   };
@@ -59,6 +75,25 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
       <SafeAreaView style={styles.container}>
         <View style={styles.walletScreen}>
           <Text style={styles.walletTitle}>Connect Your Wallet</Text>
+
+          {connectError !== null && (
+            <View style={styles.errorRow}>
+              <Text style={styles.errorText}>{connectError}</Text>
+              {connectError.includes('Play Store') && (
+                <TouchableOpacity
+                  style={styles.installBtn}
+                  onPress={() =>
+                    Linking.openURL(
+                      'https://play.google.com/store/apps/details?id=app.phantom',
+                    )
+                  }
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.installBtnText}>Install Phantom</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
 
           {WALLETS.map((wallet) => (
             <TouchableOpacity
@@ -261,5 +296,32 @@ const styles = StyleSheet.create({
     fontFamily: fonts.body,
     fontSize: 13,
     color: colors.textSecondary,
+  },
+  errorRow: {
+    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+    borderRadius: radii.lg,
+    padding: 14,
+    marginBottom: 16,
+    alignItems: 'center' as const,
+  },
+  errorText: {
+    fontFamily: fonts.body,
+    fontSize: 13,
+    color: '#ef4444',
+    textAlign: 'center' as const,
+    lineHeight: 18,
+  },
+  installBtn: {
+    marginTop: 10,
+    backgroundColor: colors.accent,
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    borderRadius: radii.full,
+  },
+  installBtnText: {
+    fontFamily: fonts.display,
+    fontSize: 13,
+    fontWeight: '700' as const,
+    color: colors.text,
   },
 });

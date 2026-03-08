@@ -39,6 +39,9 @@ export function useMWA() {
         return auth;
       });
 
+      if (!result.accounts || result.accounts.length === 0) {
+        throw new Error('Wallet returned no accounts. Please try again.');
+      }
       const pubkey = new PublicKey(result.accounts[0].address);
       setState({ connected: true, publicKey: pubkey, connecting: false, error: null });
       return pubkey;

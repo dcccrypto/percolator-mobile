@@ -59,12 +59,15 @@ describe('OnboardingScreen', () => {
     expect(getByTestId('slide-icon-perps')).toBeTruthy();
   });
 
-  it('has a "Get Started" or "Connect Wallet" button', () => {
-    const { getByText } = render(
+  it('has a "Get Started" button and a Skip button', () => {
+    const { getAllByText, getByTestId } = render(
       <OnboardingScreen onComplete={mockOnComplete} />,
     );
-    // The onboarding should have an action button (either on slides or wallet screen)
-    const btn = getByText(/Get Started|Connect|Skip/i);
-    expect(btn).toBeTruthy();
+    // Skip button is visible from slide 1
+    expect(getByTestId('onboarding-skip')).toBeTruthy();
+    // Get Started CTA is present
+    expect(getByTestId('onboarding-cta')).toBeTruthy();
+    // At least one text element matching Get Started|Connect|Skip
+    expect(getAllByText(/Get Started|Connect|Skip/i).length).toBeGreaterThanOrEqual(1);
   });
 });

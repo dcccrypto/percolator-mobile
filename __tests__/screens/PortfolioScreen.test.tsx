@@ -59,8 +59,11 @@ describe('PortfolioScreen', () => {
   });
 
   it('shows connect prompt when wallet not connected', () => {
-    const { getByText } = render(<PortfolioScreen />);
-    expect(getByText(/Connect|wallet/i)).toBeTruthy();
+    const { getAllByText, getByTestId } = render(<PortfolioScreen />);
+    // New inline connect wallet empty state with testID
+    expect(getByTestId('portfolio-connect-wallet')).toBeTruthy();
+    // At least one element with Connect/wallet text
+    expect(getAllByText(/Connect|wallet/i).length).toBeGreaterThanOrEqual(1);
   });
 
   it('shows empty positions state when no positions', () => {

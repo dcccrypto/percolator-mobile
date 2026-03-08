@@ -15,6 +15,7 @@ import { CollateralScreen } from '../screens/CollateralScreen';
 import { OnboardingScreen } from '../screens/OnboardingScreen';
 import { colors } from '../theme/tokens';
 import { fonts } from '../theme/fonts';
+import { usePositionStore } from '../store/positionStore';
 
 const Tab = createBottomTabNavigator();
 const MoreStack = createNativeStackNavigator();
@@ -52,6 +53,8 @@ function MoreNavigator() {
 }
 
 function MainTabs() {
+  const openPositionCount = usePositionStore((s) => s.openPositionCount);
+
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -79,7 +82,18 @@ function MainTabs() {
     >
       <Tab.Screen name="Markets" component={MarketsScreen} />
       <Tab.Screen name="Trade" component={TradeScreen} />
-      <Tab.Screen name="Portfolio" component={PortfolioScreen} />
+      <Tab.Screen
+        name="Portfolio"
+        component={PortfolioScreen}
+        options={{
+          tabBarBadge: openPositionCount > 0 ? openPositionCount : undefined,
+          tabBarBadgeStyle: {
+            backgroundColor: colors.accent,
+            fontSize: 10,
+            fontFamily: fonts.mono,
+          },
+        }}
+      />
       <Tab.Screen name="More" component={MoreNavigator} />
     </Tab.Navigator>
   );

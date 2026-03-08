@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -16,6 +16,7 @@ import BottomSheet from '@gorhom/bottom-sheet';
 import * as Haptics from 'expo-haptics';
 import { colors, radii } from '../theme/tokens';
 import { fonts } from '../theme/fonts';
+import { usePositionStore } from '../store/positionStore';
 import { FilterPill } from '../components/ui/FilterPill';
 import { ErrorBanner } from '../components/ui/ErrorBanner';
 import { PartialCloseSheet } from '../components/trade/PartialCloseSheet';
@@ -142,7 +143,29 @@ function PositionCard({
   );
 }
 
-function EmptyPortfolio() {
+function EmptyConnectWallet({ onConnect }: { onConnect: () => void }) {
+  return (
+    <View style={styles.emptyContainer}>
+      <View style={styles.emptyIconWrap}>
+        <Text style={styles.emptyIcon}>🔐</Text>
+      </View>
+      <Text style={styles.emptyTitle}>Connect your wallet</Text>
+      <Text style={styles.emptySubtitle}>
+        Connect a Solana wallet to view positions and start trading.
+      </Text>
+      <TouchableOpacity
+        style={styles.emptyActionBtn}
+        onPress={onConnect}
+        activeOpacity={0.8}
+        testID="portfolio-connect-wallet"
+      >
+        <Text style={styles.emptyActionText}>Connect Wallet</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+function EmptyPortfolio({ onTrade }: { onTrade: () => void }) {
   return (
     <View style={styles.emptyContainer}>
       <View style={styles.emptyIconWrap}>
@@ -152,6 +175,14 @@ function EmptyPortfolio() {
       <Text style={styles.emptySubtitle}>
         Open a trade to see your positions here.
       </Text>
+      <TouchableOpacity
+        style={styles.emptyActionBtn}
+        onPress={onTrade}
+        activeOpacity={0.8}
+        testID="portfolio-start-trading"
+      >
+        <Text style={styles.emptyActionText}>Start Trading →</Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -186,9 +217,10 @@ function EmptyOrders() {
 
 export function PortfolioScreen() {
   const [tab, setTab] = useState<'open' | 'history' | 'orders'>('open');
-  const { connected, publicKey } = useMWA();
+  const { connected, publicKey, connect } = useMWA();
   const navigation = useNavigation<any>();
   const { submitTrade, submitting } = useTrade();
+  const setOpenPositionCount = usePositionStore((s) => s.setOpenPositionCount);
 
   // Bottom sheet refs
   const detailSheetRef = useRef<BottomSheet>(null);
@@ -260,6 +292,11 @@ export function PortfolioScreen() {
   const openPositions = positions.filter((p) => p.size !== 0);
   // History = closed positions (size is 0 but had trades)
   const closedPositions = positions.filter((p) => p.size === 0);
+
+  // Sync open position count to global store for tab badge
+  useEffect(() => {
+    setOpenPositionCount(openPositions.length);
+  }, [openPositions.length, setOpenPositionCount]);
   // Orders: pending/limit orders — placeholder until backend supports
   const pendingOrders: Position[] = [];
 
@@ -271,12 +308,17 @@ export function PortfolioScreen() {
         ? closedPositions
         : pendingOrders;
 
-  const TabEmptyComponent =
-    tab === 'open'
-      ? EmptyPortfolio
-      : tab === 'history'
-        ? EmptyHistory
-        : EmptyOrders;
+  const renderEmptyComponent = useCallback(() => {
+    if (loading) return null;
+    if (!connected) {
+      return <EmptyConnectWallet onConnect={connect} />;
+    }
+    if (tab === 'open') {
+      return <EmptyPortfolio onTrade={() => navigation.navigate('Trade')} />;
+    }
+    if (tab === 'history') return <EmptyHistory />;
+    return <EmptyOrders />;
+  }, [loading, connected, connect, tab, navigation]);
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -360,7 +402,7 @@ export function PortfolioScreen() {
             onManage={handleManage}
           />
         )}
-        ListEmptyComponent={!loading ? <TabEmptyComponent /> : null}
+        ListEmptyComponent={renderEmptyComponent}
       />
 
       {/* Position Detail Sheet */}
@@ -458,6 +500,19 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     textAlign: 'center',
     lineHeight: 20,
+  },
+  emptyActionBtn: {
+    marginTop: 20,
+    backgroundColor: colors.accent,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: radii.xl,
+  },
+  emptyActionText: {
+    fontFamily: fonts.display,
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.text,
   },
   // Position Card
   posCard: {

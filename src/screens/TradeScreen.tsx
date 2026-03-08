@@ -28,6 +28,7 @@ import { useTrade } from '../hooks/useTrade';
 import { usePriceFlash } from '../hooks/usePriceFlash';
 import { useMarketStore } from '../store/marketStore';
 import { useSettingsStore } from '../store/settingsStore';
+import { useMarkets } from '../hooks/useMarkets';
 
 type TradeRouteParams = {
   Trade: { direction?: 'long' | 'short' } | undefined;
@@ -40,14 +41,20 @@ export function TradeScreen() {
   const { connected, publicKey } = useMWA();
   const { selectedMarket, userIdx } = useMarketStore();
   const settings = useSettingsStore();
+  const { markets } = useMarkets();
   const slabAddress = selectedMarket?.slabAddress;
   const symbol = selectedMarket?.symbol ?? 'SOL-PERP';
+  const currentMarket = useMemo(
+    () => (slabAddress ? markets.find((m) => m.slabAddress === slabAddress) ?? null : null),
+    [markets, slabAddress],
+  );
   const { prices } = usePriceStreamMulti(slabAddress ? [slabAddress] : []);
   const livePrice = slabAddress ? prices[slabAddress]?.price ?? null : null;
   const { submitting, error: tradeError, submitTrade } = useTrade();
   const [selectedTfState, setSelectedTfState] = useState<Timeframe>('1h');
   const { prices: priceHistory, loading: chartLoading } = usePriceHistory(slabAddress, selectedTfState);
-  const { width: screenWidth } = useWindowDimensions();
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const chartHeight = Math.round(screenHeight * 0.40);
 
   // Default direction from nav params (when tapping Long/Short in MarketsScreen)
   const navDirection = route.params?.direction;
@@ -219,7 +226,7 @@ export function TradeScreen() {
           <MiniChart
             data={priceHistory}
             width={screenWidth - 64} // 16px padding * 2 + 16px panel padding * 2
-            height={220}
+            height={chartHeight}
             loading={chartLoading}
           />
           <View style={styles.timeframes}>
@@ -246,12 +253,83 @@ export function TradeScreen() {
           </View>
         </Panel>
 
+        {/* Stats Row — horizontal scroll */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.statsRow}
+          contentContainerStyle={styles.statsRowContent}
+        >
+          <StatCell
+            label="Funding"
+            value={
+              currentMarket?.fundingRate != null
+                ? `${(currentMarket.fundingRate * 100).toFixed(4)}%`
+                : '—'
+            }
+            valueColor={
+              currentMarket?.fundingRate != null
+                ? currentMarket.fundingRate >= 0
+                  ? colors.long
+                  : colors.short
+                : undefined
+            }
+          />
+          <StatCell
+            label="OI"
+            value={
+              currentMarket?.totalOpenInterest != null
+                ? formatLarge(currentMarket.totalOpenInterest)
+                : '—'
+            }
+          />
+          <StatCell
+            label="Mark"
+            value={
+              currentMarket?.markPrice != null
+                ? `$${currentMarket.markPrice.toFixed(currentMarket.markPrice < 1 ? 6 : 2)}`
+                : priceReady
+                ? `$${price.toFixed(price < 1 ? 6 : 2)}`
+                : '—'
+            }
+          />
+          <StatCell
+            label="Index"
+            value={priceReady ? `$${price.toFixed(price < 1 ? 6 : 2)}` : '—'}
+          />
+          <StatCell
+            label="24h Change"
+            value={
+              currentMarket != null
+                ? `${currentMarket.change24h >= 0 ? '+' : ''}${currentMarket.change24h.toFixed(2)}%`
+                : '—'
+            }
+            valueColor={
+              currentMarket != null
+                ? currentMarket.change24h >= 0
+                  ? colors.long
+                  : colors.short
+                : undefined
+            }
+          />
+          <StatCell
+            label="Fee"
+            value={
+              currentMarket?.tradingFeeBps != null
+                ? `${(currentMarket.tradingFeeBps / 100).toFixed(2)}%`
+                : '—'
+            }
+          />
+        </ScrollView>
+
         {/* Direction Toggle */}
         <View style={styles.directionToggle}>
           <TouchableOpacity
             style={[
               styles.directionBtn,
-              isLong && { backgroundColor: colors.long },
+              isLong
+                ? { backgroundColor: colors.longSubtle, borderColor: colors.long + '40', borderWidth: 1 }
+                : null,
             ]}
             onPress={() => {
               setDirection('long');
@@ -262,7 +340,7 @@ export function TradeScreen() {
             <Text
               style={[
                 styles.directionText,
-                isLong ? { color: colors.text } : { color: colors.textMuted },
+                { color: isLong ? colors.long : colors.textMuted },
               ]}
             >
               LONG ▲
@@ -271,7 +349,9 @@ export function TradeScreen() {
           <TouchableOpacity
             style={[
               styles.directionBtn,
-              !isLong && { backgroundColor: colors.short },
+              !isLong
+                ? { backgroundColor: colors.shortSubtle, borderColor: colors.short + '40', borderWidth: 1 }
+                : null,
             ]}
             onPress={() => {
               setDirection('short');
@@ -282,7 +362,7 @@ export function TradeScreen() {
             <Text
               style={[
                 styles.directionText,
-                !isLong ? { color: colors.text } : { color: colors.textMuted },
+                { color: !isLong ? colors.short : colors.textMuted },
               ]}
             >
               SHORT ▼
@@ -412,6 +492,52 @@ export function TradeScreen() {
   );
 }
 
+function formatLarge(value: number): string {
+  if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
+  if (value >= 1_000) return `$${(value / 1_000).toFixed(0)}K`;
+  return `$${value.toFixed(0)}`;
+}
+
+function StatCell({
+  label,
+  value,
+  valueColor,
+}: {
+  label: string;
+  value: string;
+  valueColor?: string;
+}) {
+  return (
+    <View style={statCellStyles.cell}>
+      <Text style={statCellStyles.label}>{label}</Text>
+      <Text style={[statCellStyles.value, valueColor ? { color: valueColor } : undefined]}>
+        {value}
+      </Text>
+    </View>
+  );
+}
+
+const statCellStyles = StyleSheet.create({
+  cell: {
+    minWidth: 72,
+    paddingHorizontal: 12,
+    justifyContent: 'center',
+    gap: 2,
+  },
+  label: {
+    fontFamily: fonts.body,
+    fontSize: 10,
+    color: colors.textSecondary,
+  },
+  value: {
+    fontFamily: fonts.mono,
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.text,
+    fontVariant: ['tabular-nums'],
+  },
+});
+
 function SummaryRow({
   label,
   value,
@@ -509,15 +635,29 @@ const styles = StyleSheet.create({
   },
   directionToggle: {
     flexDirection: 'row',
-    height: 48,
-    borderRadius: radii.md,
-    backgroundColor: colors.bgElevated,
+    height: 52,
+    borderRadius: radii.lg,
+    backgroundColor: colors.bgInset,
     overflow: 'hidden',
+    padding: 4,
+    gap: 4,
   },
   directionBtn: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    borderRadius: radii.md,
+  },
+  statsRow: {
+    backgroundColor: colors.bgInset,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: colors.border,
+    maxHeight: 56,
+  },
+  statsRowContent: {
+    alignItems: 'center',
+    paddingVertical: 6,
   },
   directionText: {
     fontFamily: fonts.display,

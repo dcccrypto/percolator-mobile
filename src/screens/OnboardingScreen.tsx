@@ -4,11 +4,12 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  FlatList,
   Dimensions,
   Vibration,
   ActivityIndicator,
   Image,
+  PanResponder,
+  Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, radii } from '../theme/tokens';
@@ -16,6 +17,10 @@ import { fonts } from '../theme/fonts';
 import { useMWA } from '../hooks/useMWA';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+/** Crossfade + slide duration in ms */
+const TRANSITION_MS = 300;
+
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const SLIDE_IMAGES = {
@@ -60,12 +65,93 @@ interface OnboardingScreenProps {
   onComplete: () => void;
 }
 
+/**
+ * Animated carousel slide.
+ * On mount, crossfades in from `direction` side over TRANSITION_MS.
+ */
+function SlideView({
+  slide,
+  direction,
+}: {
+  slide: (typeof SLIDES)[number];
+  direction: 'left' | 'right' | 'none';
+}) {
+  const opacity = useRef(new Animated.Value(direction === 'none' ? 1 : 0)).current;
+  const translateX = useRef(
+    new Animated.Value(direction === 'right' ? 40 : direction === 'left' ? -40 : 0),
+  ).current;
+
+  React.useEffect(() => {
+    Animated.parallel([
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration: TRANSITION_MS,
+        useNativeDriver: true,
+      }),
+      Animated.timing(translateX, {
+        toValue: 0,
+        duration: TRANSITION_MS,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, []);
+
+  return (
+    <Animated.View
+      style={[
+        styles.slide,
+        { opacity, transform: [{ translateX }] },
+      ]}
+    >
+      <View style={styles.slideImageWrap} testID={`slide-icon-${slide.image}`}>
+        <Image
+          source={SLIDE_IMAGES[slide.image]}
+          style={styles.slideImage}
+          resizeMode="contain"
+        />
+      </View>
+      <Text style={styles.slideTitle}>{slide.title}</Text>
+      <Text style={styles.slideSubtitle}>{slide.subtitle}</Text>
+    </Animated.View>
+  );
+}
+
 export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
   const [currentSlide, setCurrentSlide] = useState(0);
+  const [slideKey, setSlideKey] = useState(0); // forces SlideView remount → re-triggers animation
+  const [slideDirection, setSlideDirection] = useState<'left' | 'right' | 'none'>('none');
   const [showWallets, setShowWallets] = useState(false);
   const [connectStep, setConnectStep] = useState<ConnectStep>(null);
   const { connect } = useMWA();
-  const flatListRef = useRef<FlatList>(null);
+
+  const isTransitioning = useRef(false);
+
+  const goToSlide = (next: number, direction: 'left' | 'right') => {
+    if (isTransitioning.current) return;
+    if (next < 0 || next >= SLIDES.length) return;
+    isTransitioning.current = true;
+    setSlideDirection(direction);
+    setCurrentSlide(next);
+    setSlideKey((k) => k + 1);
+    setTimeout(() => {
+      isTransitioning.current = false;
+    }, TRANSITION_MS + 50);
+  };
+
+  // Swipe: dx < -50 → next, dx > 50 → prev
+  const panResponder = PanResponder.create({
+    onMoveShouldSetPanResponder: (_, g) =>
+      Math.abs(g.dx) > 10 && Math.abs(g.dx) > Math.abs(g.dy),
+    onPanResponderRelease: (_, g) => {
+      if (g.dx < -50) {
+        Vibration.vibrate(8);
+        goToSlide(currentSlide + 1, 'right');
+      } else if (g.dx > 50) {
+        Vibration.vibrate(8);
+        goToSlide(currentSlide - 1, 'left');
+      }
+    },
+  });
 
   const handleSkip = () => {
     Vibration.vibrate(10);
@@ -78,10 +164,9 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
   };
 
   const handleConnect = async () => {
-    if (connectStep !== null) return; // prevent double-tap
+    if (connectStep !== null) return;
     Vibration.vibrate(15);
     setConnectStep('connecting');
-    // Brief pause so user sees "Connecting..." before MWA dialog opens
     await new Promise((r) => setTimeout(r, 350));
     setConnectStep('authorizing');
     try {
@@ -102,7 +187,6 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.walletScreen}>
-          {/* Back button */}
           <TouchableOpacity
             style={styles.backBtn}
             onPress={() => {
@@ -117,7 +201,6 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
 
           <Text style={styles.walletTitle}>Connect Your Wallet</Text>
 
-          {/* Loading step indicator */}
           {connectStep !== null && (
             <View style={styles.connectingRow}>
               <ActivityIndicator size="small" color={colors.accent} />
@@ -156,7 +239,7 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Skip button — visible from slide 1 */}
+      {/* Skip button */}
       <View style={styles.skipRow}>
         <TouchableOpacity
           onPress={handleSkip}
@@ -168,40 +251,30 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
         </TouchableOpacity>
       </View>
 
-      <FlatList
-        ref={flatListRef}
-        data={SLIDES}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        onMomentumScrollEnd={(e) => {
-          const idx = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
-          setCurrentSlide(idx);
-          Vibration.vibrate(8);
-        }}
-        keyExtractor={(_, i) => String(i)}
-        renderItem={({ item }) => (
-          <View style={[styles.slide, { width: SCREEN_WIDTH }]}>
-            <View style={styles.slideIconWrap} testID={`slide-icon-${item.image}`}>
-              <Image
-                source={SLIDE_IMAGES[item.image]}
-                style={styles.slideImage}
-                resizeMode="contain"
-              />
-            </View>
-            <Text style={styles.slideTitle}>{item.title}</Text>
-            <Text style={styles.slideSubtitle}>{item.subtitle}</Text>
-          </View>
-        )}
-      />
+      {/* Animated carousel area — swipe left/right to navigate */}
+      <View style={styles.carouselArea} {...panResponder.panHandlers}>
+        <SlideView
+          key={slideKey}
+          slide={SLIDES[currentSlide]}
+          direction={slideDirection}
+        />
+      </View>
 
-      {/* Pagination dots */}
+      {/* Pagination dots — tappable */}
       <View style={styles.pagination}>
         {SLIDES.map((_, i) => (
-          <View
+          <TouchableOpacity
             key={i}
-            style={[styles.dot, currentSlide === i && styles.dotActive]}
-          />
+            onPress={() => {
+              if (i !== currentSlide) {
+                Vibration.vibrate(8);
+                goToSlide(i, i > currentSlide ? 'right' : 'left');
+              }
+            }}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <View style={[styles.dot, currentSlide === i && styles.dotActive]} />
+          </TouchableOpacity>
         ))}
       </View>
 
@@ -238,13 +311,17 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.textMuted,
   },
+  carouselArea: {
+    flex: 1,
+    overflow: 'hidden',
+  },
   slide: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 40,
   },
-  slideIconWrap: {
+  slideImageWrap: {
     marginBottom: 24,
     alignItems: 'center' as const,
   },

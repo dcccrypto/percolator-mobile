@@ -94,9 +94,17 @@ jest.mock('@supabase/supabase-js', () => ({
 // --------------------------------------------------------------------------
 // react-native-reanimated mock
 // --------------------------------------------------------------------------
-jest.mock('react-native-reanimated', () =>
-  require('react-native-reanimated/mock'),
-);
+// react-native-reanimated was removed (not New-Arch compatible + unused).
+// Keep a minimal inline mock so any test that imports it doesn't crash.
+jest.mock('react-native-reanimated', () => ({
+  default: {},
+  useSharedValue: (v) => ({ value: v }),
+  useAnimatedStyle: (fn) => fn(),
+  withTiming: (v) => v,
+  withSpring: (v) => v,
+  createAnimatedComponent: (c) => c,
+  Easing: { linear: (t) => t, ease: (t) => t, bezier: () => (t) => t },
+}));
 
 // --------------------------------------------------------------------------
 // Silence console.warn in tests

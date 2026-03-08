@@ -55,7 +55,7 @@ describe('OnboardingScreen', () => {
     const { getByTestId } = render(
       <OnboardingScreen onComplete={mockOnComplete} />,
     );
-    // Slide icons are SVG components (OnboardingIcon) since PERC-427 replaced emoji
+    // Slide images are real PNG illustrations (designer assets, PERC-503)
     expect(getByTestId('slide-icon-perps')).toBeTruthy();
   });
 

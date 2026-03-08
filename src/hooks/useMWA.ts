@@ -39,7 +39,17 @@ export function useMWA() {
         return auth;
       });
 
-      const pubkey = new PublicKey(result.accounts[0].address);
+      if (!result.accounts || result.accounts.length === 0) {
+        throw new Error('Wallet returned no accounts. Please try again.');
+      }
+      // MWA v2 returns address as base64-encoded bytes, not base58
+      const addressB64 = result.accounts[0].address;
+      const binaryStr = atob(addressB64);
+      const bytes = new Uint8Array(binaryStr.length);
+      for (let i = 0; i < binaryStr.length; i++) {
+        bytes[i] = binaryStr.charCodeAt(i);
+      }
+      const pubkey = new PublicKey(bytes);
       setState({ connected: true, publicKey: pubkey, connecting: false, error: null });
       return pubkey;
     } catch (err) {

@@ -120,7 +120,7 @@ describe('useMWA', () => {
     const mockSignResult = { signatures: ['sig1'] };
     mockTransact.mockImplementationOnce(async (cb: any) => {
       return cb({
-        authorize: jest.fn().mockResolvedValue({ accounts: [{ address: '11111111111111111111111111111111' }] }),
+        authorize: jest.fn().mockResolvedValue({ accounts: [{ address: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=' }] }),
         signAndSendTransactions: jest.fn().mockResolvedValue(mockSignResult),
       });
     });
@@ -133,5 +133,47 @@ describe('useMWA', () => {
     });
 
     expect(sigs).toEqual(mockSignResult);
+  });
+
+  it('connect() sets error when wallet returns null accounts', async () => {
+    mockTransact.mockImplementationOnce(async (cb: any) =>
+      cb({
+        authorize: jest.fn().mockResolvedValue({ accounts: null, auth_token: 'tok' }),
+        signAndSendTransactions: jest.fn(),
+        deauthorize: jest.fn(),
+      }),
+    );
+
+    const { result } = renderHook(() => useMWA());
+
+    await act(async () => {
+      const pubkey = await result.current.connect();
+      expect(pubkey).toBeNull();
+    });
+
+    expect(result.current.connected).toBe(false);
+    expect(result.current.error).toBe('Wallet returned no accounts. Please try again.');
+    expect(result.current.connecting).toBe(false);
+  });
+
+  it('connect() sets error when wallet returns empty accounts array', async () => {
+    mockTransact.mockImplementationOnce(async (cb: any) =>
+      cb({
+        authorize: jest.fn().mockResolvedValue({ accounts: [], auth_token: 'tok' }),
+        signAndSendTransactions: jest.fn(),
+        deauthorize: jest.fn(),
+      }),
+    );
+
+    const { result } = renderHook(() => useMWA());
+
+    await act(async () => {
+      const pubkey = await result.current.connect();
+      expect(pubkey).toBeNull();
+    });
+
+    expect(result.current.connected).toBe(false);
+    expect(result.current.error).toBe('Wallet returned no accounts. Please try again.');
+    expect(result.current.connecting).toBe(false);
   });
 });

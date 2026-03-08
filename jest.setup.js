@@ -23,13 +23,15 @@ jest.mock('expo-secure-store', () => ({
 // @solana-mobile/mobile-wallet-adapter-protocol mock
 // --------------------------------------------------------------------------
 jest.mock('@solana-mobile/mobile-wallet-adapter-protocol', () => ({
+  // MWA v2 returns addresses as base64-encoded 32-byte public keys
   transact: jest.fn((callback) =>
     callback({
       authorize: jest.fn(() =>
         Promise.resolve({
           accounts: [
             {
-              address: 'DummyPubkeyBase58ForTesting11111111111111111',
+              // base64 of 32 zero-bytes (System Program pubkey)
+              address: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
               publicKey: new Uint8Array(32),
             },
           ],

@@ -120,7 +120,7 @@ describe('useMWA', () => {
     const mockSignResult = { signatures: ['sig1'] };
     mockTransact.mockImplementationOnce(async (cb: any) => {
       return cb({
-        authorize: jest.fn().mockResolvedValue({ accounts: [{ address: '11111111111111111111111111111111' }] }),
+        authorize: jest.fn().mockResolvedValue({ accounts: [{ address: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=' }] }),
         signAndSendTransactions: jest.fn().mockResolvedValue(mockSignResult),
       });
     });

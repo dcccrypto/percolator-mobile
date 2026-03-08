@@ -5,6 +5,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   Dimensions,
+  Linking,
   Vibration,
   ActivityIndicator,
   Image,
@@ -122,9 +123,24 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
   const [slideDirection, setSlideDirection] = useState<'left' | 'right' | 'none'>('none');
   const [showWallets, setShowWallets] = useState(false);
   const [connectStep, setConnectStep] = useState<ConnectStep>(null);
-  const { connect } = useMWA();
+  const [connectError, setConnectError] = useState<string | null>(null);
+  const { connect, error: mwaError } = useMWA();
 
   const isTransitioning = useRef(false);
+
+  // Translate raw MWA errors into user-friendly messages
+  React.useEffect(() => {
+    if (!mwaError) return;
+    if (mwaError.includes('WALLET_NOT_FOUND') || mwaError.includes('Found no installed wallet')) {
+      setConnectError(
+        'No compatible wallet app found. Please install Phantom or Solflare from the Play Store and try again.',
+      );
+    } else if (mwaError.includes('CANCELED') || mwaError.includes('cancelled')) {
+      setConnectError('Wallet connection was cancelled.');
+    } else {
+      setConnectError(mwaError);
+    }
+  }, [mwaError]);
 
   const goToSlide = (next: number, direction: 'left' | 'right') => {
     if (isTransitioning.current) return;
@@ -165,6 +181,7 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
 
   const handleConnect = async () => {
     if (connectStep !== null) return;
+    setConnectError(null);
     Vibration.vibrate(15);
     setConnectStep('connecting');
     await new Promise((r) => setTimeout(r, 350));
@@ -191,6 +208,7 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
             style={styles.backBtn}
             onPress={() => {
               setConnectStep(null);
+              setConnectError(null);
               setShowWallets(false);
             }}
             activeOpacity={0.7}
@@ -205,6 +223,25 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
             <View style={styles.connectingRow}>
               <ActivityIndicator size="small" color={colors.accent} />
               <Text style={styles.connectingText}>{CONNECT_STEP_TEXT[connectStep]}</Text>
+            </View>
+          )}
+
+          {connectError !== null && (
+            <View style={styles.errorRow}>
+              <Text style={styles.errorText}>{connectError}</Text>
+              {connectError.includes('Play Store') && (
+                <TouchableOpacity
+                  style={styles.installBtn}
+                  onPress={() =>
+                    Linking.openURL(
+                      'https://play.google.com/store/apps/details?id=app.phantom',
+                    )
+                  }
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.installBtnText}>Install Phantom</Text>
+                </TouchableOpacity>
+              )}
             </View>
           )}
 
@@ -470,5 +507,32 @@ const styles = StyleSheet.create({
     fontFamily: fonts.body,
     fontSize: 13,
     color: colors.textSecondary,
+  },
+  errorRow: {
+    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+    borderRadius: radii.lg,
+    padding: 14,
+    marginBottom: 16,
+    alignItems: 'center' as const,
+  },
+  errorText: {
+    fontFamily: fonts.body,
+    fontSize: 13,
+    color: '#ef4444',
+    textAlign: 'center' as const,
+    lineHeight: 18,
+  },
+  installBtn: {
+    marginTop: 10,
+    backgroundColor: colors.accent,
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    borderRadius: radii.full,
+  },
+  installBtnText: {
+    fontFamily: fonts.display,
+    fontSize: 13,
+    fontWeight: '700' as const,
+    color: colors.text,
   },
 });

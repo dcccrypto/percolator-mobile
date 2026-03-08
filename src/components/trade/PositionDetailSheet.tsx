@@ -48,7 +48,9 @@ export const PositionDetailSheet = forwardRef<BottomSheet, Props>(
       ? ((position.currentPrice - position.liqPrice) / position.currentPrice) * 100
       : ((position.liqPrice - position.currentPrice) / position.currentPrice) * 100;
 
-    const explorerUrl = `https://solscan.io/account/${position.slabAddress}?cluster=devnet`;
+    const cluster = process.env.EXPO_PUBLIC_CLUSTER || 'devnet';
+    const clusterParam = cluster === 'mainnet-beta' ? '' : `?cluster=${cluster}`;
+    const explorerUrl = `https://solscan.io/account/${position.slabAddress}${clusterParam}`;
 
     return (
       <BottomSheet

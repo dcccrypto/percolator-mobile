@@ -53,8 +53,10 @@ export function SuccessToast({
     ? `${txSignature.slice(0, 8)}…${txSignature.slice(-8)}`
     : null;
 
+  const cluster = process.env.EXPO_PUBLIC_CLUSTER || 'devnet';
+  const clusterParam = cluster === 'mainnet-beta' ? '' : `?cluster=${cluster}`;
   const explorerUrl = txSignature
-    ? `https://solscan.io/tx/${txSignature}?cluster=devnet`
+    ? `https://solscan.io/tx/${txSignature}${clusterParam}`
     : null;
 
   return (

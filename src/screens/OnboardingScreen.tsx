@@ -6,6 +6,8 @@ import {
   TouchableOpacity,
   FlatList,
   Dimensions,
+  Vibration,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, radii } from '../theme/tokens';
@@ -39,6 +41,14 @@ const WALLETS = [
   { id: 'solflare', name: 'Solflare', icon: '🔵', recommended: false },
 ];
 
+type ConnectStep = null | 'connecting' | 'authorizing' | 'done';
+
+const CONNECT_STEP_TEXT: Record<NonNullable<ConnectStep>, string> = {
+  connecting: 'Connecting...',
+  authorizing: 'Authorizing...',
+  done: 'Done!',
+};
+
 interface OnboardingScreenProps {
   onComplete: () => void;
 }
@@ -46,26 +56,74 @@ interface OnboardingScreenProps {
 export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [showWallets, setShowWallets] = useState(false);
-  const { connect, connecting } = useMWA();
+  const [connectStep, setConnectStep] = useState<ConnectStep>(null);
+  const { connect } = useMWA();
   const flatListRef = useRef<FlatList>(null);
 
+  const handleSkip = () => {
+    Vibration.vibrate(10);
+    onComplete();
+  };
+
+  const handleGetStarted = () => {
+    Vibration.vibrate(15);
+    setShowWallets(true);
+  };
+
   const handleConnect = async () => {
-    const pubkey = await connect();
-    if (pubkey) onComplete();
+    if (connectStep !== null) return; // prevent double-tap
+    Vibration.vibrate(15);
+    setConnectStep('connecting');
+    // Brief pause so user sees "Connecting..." before MWA dialog opens
+    await new Promise((r) => setTimeout(r, 350));
+    setConnectStep('authorizing');
+    try {
+      const pubkey = await connect();
+      if (pubkey) {
+        setConnectStep('done');
+        await new Promise((r) => setTimeout(r, 400));
+        onComplete();
+      } else {
+        setConnectStep(null);
+      }
+    } catch {
+      setConnectStep(null);
+    }
   };
 
   if (showWallets) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.walletScreen}>
+          {/* Back button */}
+          <TouchableOpacity
+            style={styles.backBtn}
+            onPress={() => {
+              setConnectStep(null);
+              setShowWallets(false);
+            }}
+            activeOpacity={0.7}
+            disabled={connectStep !== null}
+          >
+            <Text style={styles.backText}>← Back</Text>
+          </TouchableOpacity>
+
           <Text style={styles.walletTitle}>Connect Your Wallet</Text>
+
+          {/* Loading step indicator */}
+          {connectStep !== null && (
+            <View style={styles.connectingRow}>
+              <ActivityIndicator size="small" color={colors.accent} />
+              <Text style={styles.connectingText}>{CONNECT_STEP_TEXT[connectStep]}</Text>
+            </View>
+          )}
 
           {WALLETS.map((wallet) => (
             <TouchableOpacity
               key={wallet.id}
-              style={styles.walletOption}
+              style={[styles.walletOption, connectStep !== null && styles.walletOptionDisabled]}
               onPress={handleConnect}
-              disabled={connecting}
+              disabled={connectStep !== null}
               activeOpacity={0.7}
             >
               <Text style={styles.walletIcon}>{wallet.icon}</Text>
@@ -91,6 +149,18 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
 
   return (
     <SafeAreaView style={styles.container}>
+      {/* Skip button — visible from slide 1 */}
+      <View style={styles.skipRow}>
+        <TouchableOpacity
+          onPress={handleSkip}
+          activeOpacity={0.7}
+          style={styles.skipBtn}
+          testID="onboarding-skip"
+        >
+          <Text style={styles.skipText}>Skip</Text>
+        </TouchableOpacity>
+      </View>
+
       <FlatList
         ref={flatListRef}
         data={SLIDES}
@@ -98,7 +168,9 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
         pagingEnabled
         showsHorizontalScrollIndicator={false}
         onMomentumScrollEnd={(e) => {
-          setCurrentSlide(Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH));
+          const idx = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
+          setCurrentSlide(idx);
+          Vibration.vibrate(8);
         }}
         keyExtractor={(_, i) => String(i)}
         renderItem={({ item }) => (
@@ -125,8 +197,9 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
       {/* CTA */}
       <TouchableOpacity
         style={styles.cta}
-        onPress={() => setShowWallets(true)}
+        onPress={handleGetStarted}
         activeOpacity={0.8}
+        testID="onboarding-cta"
       >
         <Text style={styles.ctaText}>Get Started →</Text>
       </TouchableOpacity>
@@ -138,6 +211,21 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.bgVoid,
+  },
+  skipRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    paddingHorizontal: 20,
+    paddingTop: 8,
+  },
+  skipBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+  },
+  skipText: {
+    fontFamily: fonts.body,
+    fontSize: 14,
+    color: colors.textMuted,
   },
   slide: {
     flex: 1,
@@ -196,6 +284,16 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   // Wallet screen
+  backBtn: {
+    alignSelf: 'flex-start',
+    marginBottom: 24,
+    paddingVertical: 4,
+  },
+  backText: {
+    fontFamily: fonts.body,
+    fontSize: 14,
+    color: colors.textSecondary,
+  },
   walletScreen: {
     flex: 1,
     padding: 24,
@@ -207,7 +305,23 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.text,
     textAlign: 'center',
-    marginBottom: 32,
+    marginBottom: 24,
+  },
+  connectingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginBottom: 16,
+    backgroundColor: colors.accentSubtle,
+    borderRadius: radii.md,
+    paddingVertical: 10,
+  },
+  connectingText: {
+    fontFamily: fonts.body,
+    fontSize: 14,
+    color: colors.accent,
+    fontWeight: '600',
   },
   walletOption: {
     flexDirection: 'row',
@@ -219,6 +333,9 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     borderWidth: 1,
     borderColor: colors.border,
+  },
+  walletOptionDisabled: {
+    opacity: 0.5,
   },
   walletIcon: {
     fontSize: 24,

@@ -138,7 +138,9 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
     } else if (mwaError.includes('CANCELED') || mwaError.includes('cancelled')) {
       setConnectError('Wallet connection was cancelled.');
     } else {
-      setConnectError(mwaError);
+      // Do not expose raw MWA SDK error strings to users (issue #42)
+      // Raw string should be sent to Sentry/logging before mainnet
+      setConnectError('Wallet connection failed. Please try again.');
     }
   }, [mwaError]);
 

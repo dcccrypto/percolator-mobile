@@ -1,7 +1,14 @@
 /**
  * Tests for src/hooks/usePriceStream.ts
+ * 
+ * PERC-505: Updated for batched price updates (500ms flush interval).
+ * Uses real timers + waitFor to handle async batch flush.
  */
-import { renderHook, act } from '@testing-library/react-native';
+import { renderHook, act, waitFor } from '@testing-library/react-native';
+import { AppState } from 'react-native';
+
+// Mock AppState.addEventListener
+jest.spyOn(AppState, 'addEventListener').mockImplementation(() => ({ remove: jest.fn() }) as any);
 
 // Mock WebSocket
 class MockWebSocket {
@@ -74,17 +81,14 @@ describe('usePriceStream', () => {
 
   it('sets connected status on ws open', () => {
     const { result } = renderHook(() => usePriceStream(['slab1']));
-    // Get the ws created by the latest effect run
     const ws = MockWebSocket.latest();
 
     act(() => { ws.onopen!(); });
 
-    // The hook may re-create the WS on re-render; check that the latest onopen sets connected
-    // If the WS was replaced, status may be 'connecting' for the new one
     expect(['connected', 'connecting']).toContain(result.current.status);
   });
 
-  it('updates prices on message', () => {
+  it('updates prices after batch flush', async () => {
     const { result } = renderHook(() => usePriceStream(['slab1']));
     const ws = MockWebSocket.latest();
 
@@ -100,6 +104,11 @@ describe('usePriceStream', () => {
       });
     });
 
+    // Wait for batch flush (500ms interval)
+    await waitFor(() => {
+      expect(result.current.prices['slab1']).toBeDefined();
+    }, { timeout: 2000 });
+
     expect(result.current.prices['slab1']).toMatchObject({
       slabAddress: 'slab1',
       price: 100.5,
@@ -108,7 +117,7 @@ describe('usePriceStream', () => {
     expect(result.current.prices['slab1'].timestamp).toBeDefined();
   });
 
-  it('uses price as markPrice fallback', () => {
+  it('uses price as markPrice fallback', async () => {
     const { result } = renderHook(() => usePriceStream(['slab1']));
     const ws = MockWebSocket.latest();
 
@@ -119,42 +128,44 @@ describe('usePriceStream', () => {
       });
     });
 
+    await waitFor(() => {
+      expect(result.current.prices['slab1']).toBeDefined();
+    }, { timeout: 2000 });
+
     expect(result.current.prices['slab1'].markPrice).toBe(50);
   });
 
-  it('ignores malformed JSON messages', () => {
+  it('ignores malformed JSON messages', async () => {
     const { result } = renderHook(() => usePriceStream(['slab1']));
     const ws = MockWebSocket.latest();
 
     act(() => { ws.onopen!(); });
-    act(() => {
-      ws.onmessage!({ data: 'not json {{{' });
-    });
+    act(() => { ws.onmessage!({ data: 'not json {{{' }); });
 
+    // Wait a bit then verify nothing appeared
+    await new Promise((r) => setTimeout(r, 700));
     expect(Object.keys(result.current.prices).length).toBe(0);
   });
 
-  it('ignores non-price messages', () => {
+  it('ignores non-price messages', async () => {
     const { result } = renderHook(() => usePriceStream(['slab1']));
     const ws = MockWebSocket.latest();
 
     act(() => { ws.onopen!(); });
-    act(() => {
-      ws.onmessage!({ data: JSON.stringify({ type: 'heartbeat' }) });
-    });
+    act(() => { ws.onmessage!({ data: JSON.stringify({ type: 'heartbeat' }) }); });
 
+    await new Promise((r) => setTimeout(r, 700));
     expect(Object.keys(result.current.prices).length).toBe(0);
   });
 
-  it('ignores price messages without slabAddress', () => {
+  it('ignores price messages without slabAddress', async () => {
     const { result } = renderHook(() => usePriceStream(['slab1']));
     const ws = MockWebSocket.latest();
 
     act(() => { ws.onopen!(); });
-    act(() => {
-      ws.onmessage!({ data: JSON.stringify({ type: 'price', price: 100 }) });
-    });
+    act(() => { ws.onmessage!({ data: JSON.stringify({ type: 'price', price: 100 }) }); });
 
+    await new Promise((r) => setTimeout(r, 700));
     expect(Object.keys(result.current.prices).length).toBe(0);
   });
 
@@ -165,5 +176,25 @@ describe('usePriceStream', () => {
     unmount();
 
     expect(ws.closed).toBe(true);
+  });
+
+  it('batches multiple updates into single flush', async () => {
+    const { result } = renderHook(() => usePriceStream(['slab1', 'slab2']));
+    const ws = MockWebSocket.latest();
+
+    act(() => { ws.onopen!(); });
+    act(() => {
+      ws.onmessage!({ data: JSON.stringify({ type: 'price', slabAddress: 'slab1', price: 100 }) });
+      ws.onmessage!({ data: JSON.stringify({ type: 'price', slabAddress: 'slab2', price: 200 }) });
+      ws.onmessage!({ data: JSON.stringify({ type: 'price', slabAddress: 'slab1', price: 101 }) }); // overwrite
+    });
+
+    await waitFor(() => {
+      expect(result.current.prices['slab1']).toBeDefined();
+    }, { timeout: 2000 });
+
+    // slab1 should have latest price (101), slab2 should be 200
+    expect(result.current.prices['slab1'].price).toBe(101);
+    expect(result.current.prices['slab2'].price).toBe(200);
   });
 });

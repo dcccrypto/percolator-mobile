@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, lazy, Suspense } from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Text, ActivityIndicator, View } from 'react-native';
@@ -7,12 +7,22 @@ import * as SecureStore from 'expo-secure-store';
 
 import { MarketsScreen } from '../screens/MarketsScreen';
 import { TradeScreen } from '../screens/TradeScreen';
-import { PortfolioScreen } from '../screens/PortfolioScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
-import { FaucetScreen } from '../screens/FaucetScreen';
-import { MarketCreationScreen } from '../screens/MarketCreationScreen';
-import { CollateralScreen } from '../screens/CollateralScreen';
 import { OnboardingScreen } from '../screens/OnboardingScreen';
+
+// Lazy-loaded heavy screens (PERC-505: reduces startup bundle)
+const PortfolioScreen = lazy(() =>
+  import('../screens/PortfolioScreen').then((m) => ({ default: m.PortfolioScreen }))
+);
+const FaucetScreen = lazy(() =>
+  import('../screens/FaucetScreen').then((m) => ({ default: m.FaucetScreen }))
+);
+const MarketCreationScreen = lazy(() =>
+  import('../screens/MarketCreationScreen').then((m) => ({ default: m.MarketCreationScreen }))
+);
+const CollateralScreen = lazy(() =>
+  import('../screens/CollateralScreen').then((m) => ({ default: m.CollateralScreen }))
+);
 import { colors } from '../theme/tokens';
 import { fonts } from '../theme/fonts';
 import { usePositionStore } from '../store/positionStore';
@@ -36,6 +46,31 @@ function TabIcon({ label, focused }: { label: string; focused: boolean }) {
   );
 }
 
+/** Suspense fallback for lazy-loaded screens */
+function ScreenLoader() {
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.bgVoid, justifyContent: 'center', alignItems: 'center' }}>
+      <ActivityIndicator color={colors.accent} size="small" />
+    </View>
+  );
+}
+
+/** Wrap a lazy component for use with React Navigation */
+function withSuspense<P extends object>(LazyComponent: React.LazyExoticComponent<React.ComponentType<P>>) {
+  return function SuspenseWrapper(props: P) {
+    return (
+      <Suspense fallback={<ScreenLoader />}>
+        <LazyComponent {...props} />
+      </Suspense>
+    );
+  };
+}
+
+const LazyPortfolio = withSuspense(PortfolioScreen);
+const LazyFaucet = withSuspense(FaucetScreen);
+const LazyCreateMarket = withSuspense(MarketCreationScreen);
+const LazyCollateral = withSuspense(CollateralScreen);
+
 function MoreNavigator() {
   return (
     <MoreStack.Navigator
@@ -45,9 +80,9 @@ function MoreNavigator() {
       }}
     >
       <MoreStack.Screen name="SettingsHome" component={SettingsScreen} />
-      <MoreStack.Screen name="Faucet" component={FaucetScreen} />
-      <MoreStack.Screen name="CreateMarket" component={MarketCreationScreen} />
-      <MoreStack.Screen name="Collateral" component={CollateralScreen} />
+      <MoreStack.Screen name="Faucet" component={LazyFaucet} />
+      <MoreStack.Screen name="CreateMarket" component={LazyCreateMarket} />
+      <MoreStack.Screen name="Collateral" component={LazyCollateral} />
     </MoreStack.Navigator>
   );
 }
@@ -84,7 +119,7 @@ function MainTabs() {
       <Tab.Screen name="Trade" component={TradeScreen} />
       <Tab.Screen
         name="Portfolio"
-        component={PortfolioScreen}
+        component={LazyPortfolio}
         options={{
           tabBarBadge: openPositionCount > 0 ? openPositionCount : undefined,
           tabBarBadgeStyle: {

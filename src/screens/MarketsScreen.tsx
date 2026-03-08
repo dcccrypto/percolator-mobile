@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, memo } from 'react';
 import {
   View,
   Text,
@@ -36,7 +36,10 @@ function formatVolume(oi: number | null): string {
   return `$${oi.toFixed(0)}`;
 }
 
-function MarketCard({
+// Fixed card height for getItemLayout (card ~184px + 8px gap)
+const CARD_HEIGHT = 192;
+
+const MarketCard = memo(function MarketCard({
   market,
   onTrade,
 }: {
@@ -102,7 +105,7 @@ function MarketCard({
       </View>
     </Panel>
   );
-}
+});
 
 export function MarketsScreen() {
   const [search, setSearch] = useState('');
@@ -210,6 +213,15 @@ export function MarketsScreen() {
           keyExtractor={(item) => item.slabAddress}
           contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}
+          getItemLayout={(_data, index) => ({
+            length: CARD_HEIGHT,
+            offset: CARD_HEIGHT * index + 16, // 16px list padding
+            index,
+          })}
+          initialNumToRender={8}
+          maxToRenderPerBatch={10}
+          windowSize={5}
+          removeClippedSubviews
           refreshControl={
             <RefreshControl
               refreshing={refreshing}

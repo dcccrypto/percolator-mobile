@@ -8,30 +8,37 @@ import {
   Dimensions,
   Vibration,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, radii } from '../theme/tokens';
 import { fonts } from '../theme/fonts';
 import { useMWA } from '../hooks/useMWA';
-import { OnboardingIcon } from '../components/icons/OnboardingIcon';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const SLIDE_IMAGES = {
+  perps: require('../../assets/onboarding/slide-1-perps.png') as number,
+  onchain: require('../../assets/onboarding/slide-2-onchain.png') as number,
+  deploy: require('../../assets/onboarding/slide-3-deploy.png') as number,
+};
 
 const SLIDES = [
   {
     title: 'Permissionless Perps\non Solana',
     subtitle: 'Trade any asset with leverage. No gatekeepers. No KYC.',
-    icon: 'perps' as const,
+    image: 'perps' as const,
   },
   {
     title: 'Fully On-Chain',
     subtitle: 'Every trade, every position — verifiable on Solana.',
-    icon: 'onchain' as const,
+    image: 'onchain' as const,
   },
   {
     title: 'Deploy in 60s',
     subtitle: 'Create your own perpetual market in under a minute.',
-    icon: 'deploy' as const,
+    image: 'deploy' as const,
   },
 ];
 
@@ -175,8 +182,12 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
         keyExtractor={(_, i) => String(i)}
         renderItem={({ item }) => (
           <View style={[styles.slide, { width: SCREEN_WIDTH }]}>
-            <View style={styles.slideIconWrap} testID={`slide-icon-${item.icon}`}>
-              <OnboardingIcon type={item.icon} size={72} />
+            <View style={styles.slideIconWrap} testID={`slide-icon-${item.image}`}>
+              <Image
+                source={SLIDE_IMAGES[item.image]}
+                style={styles.slideImage}
+                resizeMode="contain"
+              />
             </View>
             <Text style={styles.slideTitle}>{item.title}</Text>
             <Text style={styles.slideSubtitle}>{item.subtitle}</Text>
@@ -236,6 +247,10 @@ const styles = StyleSheet.create({
   slideIconWrap: {
     marginBottom: 24,
     alignItems: 'center' as const,
+  },
+  slideImage: {
+    width: SCREEN_WIDTH * 0.7,
+    height: SCREEN_WIDTH * 0.7,
   },
   slideTitle: {
     fontFamily: fonts.display,

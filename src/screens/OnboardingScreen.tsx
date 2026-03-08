@@ -48,12 +48,6 @@ const SLIDES = [
   },
 ];
 
-const WALLETS = [
-  { id: 'seed-vault', name: 'Seed Vault', icon: '🔐', recommended: true },
-  { id: 'phantom', name: 'Phantom', icon: '👻', recommended: false },
-  { id: 'solflare', name: 'Solflare', icon: '🔵', recommended: false },
-];
-
 type ConnectStep = null | 'connecting' | 'authorizing' | 'done';
 
 const CONNECT_STEP_TEXT: Record<NonNullable<ConnectStep>, string> = {
@@ -218,13 +212,7 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
           </TouchableOpacity>
 
           <Text style={styles.walletTitle}>Connect Your Wallet</Text>
-
-          {connectStep !== null && (
-            <View style={styles.connectingRow}>
-              <ActivityIndicator size="small" color={colors.accent} />
-              <Text style={styles.connectingText}>{CONNECT_STEP_TEXT[connectStep]}</Text>
-            </View>
-          )}
+          <Text style={styles.walletSubtitle}>Your device will show available wallets</Text>
 
           {connectError !== null && (
             <View style={styles.errorRow}>
@@ -245,30 +233,25 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
             </View>
           )}
 
-          {WALLETS.map((wallet) => (
-            <TouchableOpacity
-              key={wallet.id}
-              style={[styles.walletOption, connectStep !== null && styles.walletOptionDisabled]}
-              onPress={handleConnect}
-              disabled={connectStep !== null}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.walletIcon}>{wallet.icon}</Text>
-              <View style={styles.walletInfo}>
-                <Text style={styles.walletName}>{wallet.name}</Text>
-                {wallet.recommended && (
-                  <View style={styles.recommendedBadge}>
-                    <Text style={styles.recommendedText}>Recommended</Text>
-                  </View>
-                )}
+          <TouchableOpacity
+            style={[styles.connectBtn, connectStep !== null && styles.connectBtnDisabled]}
+            onPress={handleConnect}
+            disabled={connectStep !== null}
+            activeOpacity={0.8}
+          >
+            {connectStep !== null ? (
+              <View style={styles.connectingRow}>
+                <ActivityIndicator size="small" color={colors.text} />
+                <Text style={styles.connectBtnText}>{CONNECT_STEP_TEXT[connectStep]}</Text>
               </View>
-              <Text style={styles.walletArrow}>→</Text>
-            </TouchableOpacity>
-          ))}
-
-          <TouchableOpacity style={styles.importLink} activeOpacity={0.7}>
-            <Text style={styles.importText}>Already have an account? Import wallet</Text>
+            ) : (
+              <Text style={styles.connectBtnText}>Connect Wallet</Text>
+            )}
           </TouchableOpacity>
+
+          <Text style={styles.supportedText}>
+            {'Supports Seed Vault, Phantom, Solflare & more'}
+          </Text>
         </View>
       </SafeAreaView>
     );
@@ -434,79 +417,45 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.text,
     textAlign: 'center',
-    marginBottom: 24,
+    marginBottom: 8,
+  },
+  walletSubtitle: {
+    fontFamily: fonts.body,
+    fontSize: 14,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: 32,
+  },
+  connectBtn: {
+    backgroundColor: colors.accent,
+    height: 56,
+    borderRadius: radii.xl,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(153, 69, 255, 0.4)',
+  },
+  connectBtnDisabled: {
+    opacity: 0.7,
+  },
+  connectBtnText: {
+    fontFamily: fonts.display,
+    fontSize: 17,
+    fontWeight: '700',
+    color: colors.text,
   },
   connectingRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    marginBottom: 16,
-    backgroundColor: colors.accentSubtle,
-    borderRadius: radii.md,
-    paddingVertical: 10,
   },
-  connectingText: {
+  supportedText: {
     fontFamily: fonts.body,
-    fontSize: 14,
-    color: colors.accent,
-    fontWeight: '600',
-  },
-  walletOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.bgElevated,
-    height: 64,
-    borderRadius: radii.lg,
-    paddingHorizontal: 16,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  walletOptionDisabled: {
-    opacity: 0.5,
-  },
-  walletIcon: {
-    fontSize: 24,
-    marginRight: 12,
-  },
-  walletInfo: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  walletName: {
-    fontFamily: fonts.display,
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  recommendedBadge: {
-    backgroundColor: colors.longSubtle,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: radii.full,
-  },
-  recommendedText: {
-    fontFamily: fonts.body,
-    fontSize: 10,
-    fontWeight: '600',
-    color: colors.long,
-  },
-  walletArrow: {
-    fontFamily: fonts.mono,
-    fontSize: 18,
+    fontSize: 12,
     color: colors.textMuted,
-  },
-  importLink: {
-    marginTop: 24,
-    alignItems: 'center',
-  },
-  importText: {
-    fontFamily: fonts.body,
-    fontSize: 13,
-    color: colors.textSecondary,
+    textAlign: 'center',
+    marginTop: 16,
   },
   errorRow: {
     backgroundColor: 'rgba(239, 68, 68, 0.12)',

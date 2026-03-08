@@ -73,8 +73,8 @@ describe('TradeScreen', () => {
   });
 
   it('shows leverage options', () => {
-    const { getByText } = render(<TradeScreen />);
-    expect(getByText('5x')).toBeTruthy();
+    const { getAllByText } = render(<TradeScreen />);
+    expect(getAllByText('5x').length).toBeGreaterThanOrEqual(1);
   });
 
   it('shows "Connect Wallet" prompt when not connected', () => {

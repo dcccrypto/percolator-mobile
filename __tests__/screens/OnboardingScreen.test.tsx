@@ -71,30 +71,36 @@ describe('OnboardingScreen', () => {
 
   // ── Wallet screen ─────────────────────────────────────────────────────────
 
-  it('wallet screen shows wallet options', async () => {
+  it('wallet screen shows single connect button', async () => {
     const { getByText } = render(<OnboardingScreen onComplete={mockOnComplete} />);
     await act(async () => {
       fireEvent.press(getByText(/Get Started/i));
     });
-    expect(getByText('Seed Vault')).toBeTruthy();
-    expect(getByText('Phantom')).toBeTruthy();
-    expect(getByText('Solflare')).toBeTruthy();
+    expect(getByText('Connect Wallet')).toBeTruthy();
+    expect(getByText(/Supports Seed Vault, Phantom, Solflare/)).toBeTruthy();
   });
 
-  it('tapping a wallet calls connect()', async () => {
+  it('tapping Connect Wallet calls connect()', async () => {
+    jest.useFakeTimers();
     const { getByText } = render(<OnboardingScreen onComplete={mockOnComplete} />);
     await act(async () => {
       fireEvent.press(getByText(/Get Started/i));
     });
     await act(async () => {
-      fireEvent.press(getByText('Phantom'));
+      fireEvent.press(getByText('Connect Wallet'));
+    });
+    // Advance past the 350ms delay before connect() is called
+    await act(async () => {
+      jest.advanceTimersByTime(400);
     });
     await waitFor(() => {
       expect(mockMWAState.connect).toHaveBeenCalledTimes(1);
     }, { timeout: 1500 });
+    jest.useRealTimers();
   });
 
   it('calls onComplete() when connect() returns a pubkey', async () => {
+    jest.useFakeTimers();
     const { PublicKey } = require('@solana/web3.js');
     mockMWAState.connect.mockResolvedValue(
       new PublicKey('DummyPubkeyBase58ForTesting11111111111111111'),
@@ -105,12 +111,21 @@ describe('OnboardingScreen', () => {
       fireEvent.press(getByText(/Get Started/i));
     });
     await act(async () => {
-      fireEvent.press(getByText('Phantom'));
+      fireEvent.press(getByText('Connect Wallet'));
+    });
+    // Advance past the 350ms connecting delay
+    await act(async () => {
+      jest.advanceTimersByTime(400);
+    });
+    // Advance past the 400ms done delay
+    await act(async () => {
+      jest.advanceTimersByTime(500);
     });
 
     await waitFor(() => {
       expect(mockOnComplete).toHaveBeenCalledTimes(1);
     }, { timeout: 1500 });
+    jest.useRealTimers();
   });
 
   // ── Error banner ──────────────────────────────────────────────────────────

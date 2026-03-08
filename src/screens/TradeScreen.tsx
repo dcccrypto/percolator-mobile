@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,12 +8,16 @@ import {
   Alert,
   ActivityIndicator,
   useWindowDimensions,
+  Animated,
+  LayoutAnimation,
+  Platform,
+  UIManager,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRoute, RouteProp } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
-import { colors, radii } from '../theme/tokens';
-import { fonts } from '../theme/fonts';
+import { colors, radii, spacing } from '../theme/tokens';
+import { fonts, typography } from '../theme/fonts';
 import { Panel } from '../components/ui/Panel';
 import { InputField } from '../components/ui/InputField';
 import { TradeButton } from '../components/ui/TradeButton';
@@ -30,11 +34,23 @@ import { useMarketStore } from '../store/marketStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { useMarkets } from '../hooks/useMarkets';
 
+// Enable LayoutAnimation on Android
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
 type TradeRouteParams = {
   Trade: { direction?: 'long' | 'short' } | undefined;
 };
 
 const LEVERAGE_OPTIONS = ['1x', '2x', '5x', '10x', '20x'];
+const SIZE_PRESETS = [
+  { label: '25%', fraction: 0.25 },
+  { label: '50%', fraction: 0.5 },
+  { label: '75%', fraction: 0.75 },
+  { label: 'MAX', fraction: 1.0 },
+];
+const CHART_MINI_HEIGHT = 60;
 
 export function TradeScreen() {
   const route = useRoute<RouteProp<TradeRouteParams, 'Trade'>>();
@@ -54,7 +70,10 @@ export function TradeScreen() {
   const [selectedTfState, setSelectedTfState] = useState<Timeframe>('1h');
   const { prices: priceHistory, loading: chartLoading } = usePriceHistory(slabAddress, selectedTfState);
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
-  const chartHeight = Math.round(screenHeight * 0.40);
+
+  // Chart collapse state
+  const [chartCollapsed, setChartCollapsed] = useState(false);
+  const chartHeight = chartCollapsed ? CHART_MINI_HEIGHT : Math.round(screenHeight * 0.35);
 
   // Default direction from nav params (when tapping Long/Short in MarketsScreen)
   const navDirection = route.params?.direction;
@@ -62,6 +81,12 @@ export function TradeScreen() {
   const [size, setSize] = useState('');
   // Use settings default leverage; fall back to '5x'
   const [leverage, setLeverage] = useState(settings.defaultLeverage || '5x');
+
+  // Order summary collapsed state
+  const [summaryExpanded, setSummaryExpanded] = useState(false);
+
+  // Price flash animation
+  const flashAnim = useRef(new Animated.Value(1)).current;
 
   // Sync direction if navigated with a direction param
   useEffect(() => {
@@ -79,6 +104,18 @@ export function TradeScreen() {
 
   // Price flash effect (green/red on change)
   const priceFlash = usePriceFlash(livePrice);
+
+  // Trigger flash animation on price change
+  useEffect(() => {
+    if (priceFlash === 'up' || priceFlash === 'down') {
+      flashAnim.setValue(0.6);
+      Animated.timing(flashAnim, {
+        toValue: 1,
+        duration: 400,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [priceFlash, flashAnim]);
 
   // Success toast state
   const [toast, setToast] = useState<{ visible: boolean; sig: string | null }>({
@@ -107,7 +144,7 @@ export function TradeScreen() {
     });
   }, [connected, publicKey, slabAddress]);
 
-  // Parse slippage from settings (e.g. '0.5%' → 0.005)
+  // Parse slippage from settings (e.g. '0.5%' -> 0.005)
   const slippagePct = useMemo(() => {
     const raw = parseFloat(settings.slippageTolerance) || 0.5;
     return raw / 100;
@@ -119,7 +156,7 @@ export function TradeScreen() {
     // sizeUsd = position notional in USD
     const sizeUsd = sizeNum * price;
     const margin = sizeUsd / levNum;
-    // Simplified liq estimate: entry ± entry/leverage
+    // Simplified liq estimate: entry +/- entry/leverage
     const liqDistance = price / levNum;
     const liqPrice =
       direction === 'long' ? price - liqDistance : price + liqDistance;
@@ -140,6 +177,46 @@ export function TradeScreen() {
     orderSummary.sizeTokens > 0 &&
     !!slabAddress &&
     !submitting;
+
+  // USD value display under size input
+  const sizeUsdDisplay = useMemo(() => {
+    const sizeNum = parseFloat(size) || 0;
+    if (sizeNum <= 0 || !priceReady) return null;
+    return (sizeNum * price).toFixed(2);
+  }, [size, price, priceReady]);
+
+  // 24h change
+  const change24h = currentMarket?.change24h ?? null;
+  const changePositive = change24h != null ? change24h >= 0 : null;
+
+  const handleSizePreset = useCallback(
+    (fraction: number) => {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      if (walletBalance != null && walletBalance > 0 && price > 0) {
+        // Reserve 0.01 SOL for tx fees
+        const usable = Math.max(walletBalance - 0.01, 0);
+        const amount = usable * fraction;
+        setSize(amount.toFixed(4));
+      } else {
+        // Fallback
+        const fallback = 10.0 * fraction;
+        setSize(fallback.toFixed(2));
+      }
+    },
+    [walletBalance, price],
+  );
+
+  const toggleChartCollapse = useCallback(() => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setChartCollapsed((prev) => !prev);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }, []);
+
+  const toggleSummary = useCallback(() => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setSummaryExpanded((prev) => !prev);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }, []);
 
   const handleOpenPosition = useCallback(async () => {
     if (!canTrade || !slabAddress) return;
@@ -178,6 +255,8 @@ export function TradeScreen() {
     );
   }, [canTrade, slabAddress, direction, orderSummary, leverage, price, symbol, userIdx, submitTrade, isLong]);
 
+  const levNum = parseInt(leverage) || 5;
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <SuccessToast
@@ -187,73 +266,118 @@ export function TradeScreen() {
         onDismiss={() => setToast({ visible: false, sig: null })}
       />
 
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.title}>{symbol}</Text>
-        {priceReady ? (
-          <Text
+      {/* ========== 1. MARKET HEADER BAR (sticky) ========== */}
+      <View style={styles.headerBar}>
+        {/* Left: Market symbol as dropdown-like touchable */}
+        <TouchableOpacity style={styles.marketSelector} activeOpacity={0.7}>
+          <Text style={styles.marketSymbol}>{symbol}</Text>
+          <Text style={styles.marketDropdownArrow}>{'\u25BC'}</Text>
+        </TouchableOpacity>
+
+        {/* Center: Large live price with flash */}
+        <View style={styles.headerPriceWrap}>
+          {priceReady ? (
+            <Animated.Text
+              style={[
+                styles.headerPrice,
+                {
+                  color:
+                    priceFlash === 'up'
+                      ? colors.long
+                      : priceFlash === 'down'
+                      ? colors.short
+                      : colors.text,
+                  opacity: flashAnim,
+                },
+              ]}
+            >
+              ${price.toFixed(price < 1 ? 6 : 2)}
+            </Animated.Text>
+          ) : (
+            <ActivityIndicator color={colors.accent} size="small" />
+          )}
+        </View>
+
+        {/* Right: 24h change badge */}
+        {change24h != null ? (
+          <View
             style={[
-              styles.price,
+              styles.changeBadge,
               {
-                color:
-                  priceFlash === 'up'
-                    ? colors.long
-                    : priceFlash === 'down'
-                    ? colors.short
-                    : colors.text,
+                backgroundColor: changePositive ? colors.longSubtle : colors.shortSubtle,
               },
             ]}
           >
-            ${price.toFixed(price < 1 ? 6 : 2)}{' '}
-            {priceFlash === 'up' ? '↑' : priceFlash === 'down' ? '↓' : ''}
-          </Text>
+            <Text
+              style={[
+                styles.changeBadgeText,
+                { color: changePositive ? colors.long : colors.short },
+              ]}
+            >
+              {changePositive ? '+' : ''}{change24h.toFixed(2)}%
+            </Text>
+          </View>
         ) : (
-          <ActivityIndicator color={colors.accent} size="small" />
+          <View style={styles.changeBadgePlaceholder} />
         )}
       </View>
 
-      {tradeError && (
-        <ErrorBanner message={tradeError} />
-      )}
+      {tradeError && <ErrorBanner message={tradeError} />}
 
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
-        {/* Price Chart */}
-        <Panel style={styles.chartPanel}>
+        {/* ========== 2. CHART SECTION ========== */}
+        <View style={styles.chartSection}>
           <MiniChart
             data={priceHistory}
-            width={screenWidth - 64} // 16px padding * 2 + 16px panel padding * 2
+            width={screenWidth - 32}
             height={chartHeight}
             loading={chartLoading}
           />
-          <View style={styles.timeframes}>
-            {(['1m', '5m', '15m', '1h', '4h', '1D'] as Timeframe[]).map((tf) => (
-              <TouchableOpacity
-                key={tf}
-                style={[
-                  styles.tfBtn,
-                  selectedTfState === tf && styles.tfBtnActive,
-                ]}
-                activeOpacity={0.7}
-                onPress={() => setSelectedTfState(tf)}
-              >
-                <Text
-                  style={[
-                    styles.tfText,
-                    selectedTfState === tf && styles.tfTextActive,
-                  ]}
-                >
-                  {tf}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </Panel>
 
-        {/* Stats Row — horizontal scroll */}
+          {/* Timeframe pills + collapse toggle */}
+          <View style={styles.chartControls}>
+            <View style={styles.timeframes}>
+              {(['1m', '5m', '15m', '1h', '4h', '1D'] as Timeframe[]).map((tf) => (
+                <TouchableOpacity
+                  key={tf}
+                  style={[
+                    styles.tfBtn,
+                    selectedTfState === tf && styles.tfBtnActive,
+                  ]}
+                  activeOpacity={0.7}
+                  onPress={() => setSelectedTfState(tf)}
+                >
+                  <Text
+                    style={[
+                      styles.tfText,
+                      selectedTfState === tf && styles.tfTextActive,
+                    ]}
+                  >
+                    {tf}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <TouchableOpacity
+              style={styles.collapseToggle}
+              onPress={toggleChartCollapse}
+              activeOpacity={0.7}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={styles.collapseText}>
+                {chartCollapsed ? '\u25B4 Expand' : '\u25BE Collapse'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* ========== 3. QUICK STATS STRIP ========== */}
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -265,7 +389,7 @@ export function TradeScreen() {
             value={
               currentMarket?.fundingRate != null
                 ? `${(currentMarket.fundingRate * 100).toFixed(4)}%`
-                : '—'
+                : '\u2014'
             }
             valueColor={
               currentMarket?.fundingRate != null
@@ -280,7 +404,7 @@ export function TradeScreen() {
             value={
               currentMarket?.totalOpenInterest != null
                 ? formatLarge(currentMarket.totalOpenInterest)
-                : '—'
+                : '\u2014'
             }
           />
           <StatCell
@@ -290,46 +414,27 @@ export function TradeScreen() {
                 ? `$${currentMarket.markPrice.toFixed(currentMarket.markPrice < 1 ? 6 : 2)}`
                 : priceReady
                 ? `$${price.toFixed(price < 1 ? 6 : 2)}`
-                : '—'
+                : '\u2014'
             }
           />
           <StatCell
             label="Index"
-            value={priceReady ? `$${price.toFixed(price < 1 ? 6 : 2)}` : '—'}
-          />
-          <StatCell
-            label="24h Change"
-            value={
-              currentMarket != null
-                ? `${currentMarket.change24h >= 0 ? '+' : ''}${currentMarket.change24h.toFixed(2)}%`
-                : '—'
-            }
-            valueColor={
-              currentMarket != null
-                ? currentMarket.change24h >= 0
-                  ? colors.long
-                  : colors.short
-                : undefined
-            }
-          />
-          <StatCell
-            label="Fee"
-            value={
-              currentMarket?.tradingFeeBps != null
-                ? `${(currentMarket.tradingFeeBps / 100).toFixed(2)}%`
-                : '—'
-            }
+            value={priceReady ? `$${price.toFixed(price < 1 ? 6 : 2)}` : '\u2014'}
           />
         </ScrollView>
 
-        {/* Direction Toggle */}
+        {/* ========== 4. DIRECTION TOGGLE ========== */}
         <View style={styles.directionToggle}>
           <TouchableOpacity
             style={[
               styles.directionBtn,
               isLong
-                ? { backgroundColor: colors.longSubtle, borderColor: colors.long + '40', borderWidth: 1 }
-                : null,
+                ? {
+                    backgroundColor: colors.longSubtle,
+                    borderColor: colors.long + '60',
+                    borderWidth: 1.5,
+                  }
+                : { borderColor: 'transparent', borderWidth: 1.5 },
             ]}
             onPress={() => {
               setDirection('long');
@@ -339,19 +444,32 @@ export function TradeScreen() {
           >
             <Text
               style={[
-                styles.directionText,
+                styles.directionLabel,
                 { color: isLong ? colors.long : colors.textMuted },
               ]}
             >
-              LONG ▲
+              Long
+            </Text>
+            <Text
+              style={[
+                styles.directionArrow,
+                { color: isLong ? colors.long : colors.textMuted },
+              ]}
+            >
+              {'\u25B2'}
             </Text>
           </TouchableOpacity>
+
           <TouchableOpacity
             style={[
               styles.directionBtn,
               !isLong
-                ? { backgroundColor: colors.shortSubtle, borderColor: colors.short + '40', borderWidth: 1 }
-                : null,
+                ? {
+                    backgroundColor: colors.shortSubtle,
+                    borderColor: colors.short + '60',
+                    borderWidth: 1.5,
+                  }
+                : { borderColor: 'transparent', borderWidth: 1.5 },
             ]}
             onPress={() => {
               setDirection('short');
@@ -361,99 +479,146 @@ export function TradeScreen() {
           >
             <Text
               style={[
-                styles.directionText,
+                styles.directionLabel,
                 { color: !isLong ? colors.short : colors.textMuted },
               ]}
             >
-              SHORT ▼
+              Short
+            </Text>
+            <Text
+              style={[
+                styles.directionArrow,
+                { color: !isLong ? colors.short : colors.textMuted },
+              ]}
+            >
+              {'\u25BC'}
             </Text>
           </TouchableOpacity>
         </View>
 
-        {/* Size Input */}
-        <InputField
-          label={`Size (${symbol.split('-')[0]})`}
-          value={size}
-          onChangeText={setSize}
-          placeholder="0.00"
-          keyboardType="decimal-pad"
-          rightAction={{
-            label: 'MAX',
-            onPress: () => {
-              if (walletBalance != null && walletBalance > 0 && price > 0) {
-                // Reserve 0.01 SOL for tx fees, convert balance to token units
-                const usable = Math.max(walletBalance - 0.01, 0);
-                const levNum = parseInt(leverage) || 5;
-                // Max token size = (usable SOL value in USD equivalent) * leverage / price
-                // For simplicity: if trading SOL perp, usable is the token amount directly
-                setSize(usable.toFixed(4));
-              } else {
-                setSize('10.0'); // Fallback
-              }
-            },
-          }}
-        />
+        {/* ========== 5. ORDER FORM ========== */}
+        <View style={styles.orderForm}>
+          {/* Size Input with USD subtext */}
+          <View style={styles.sizeSection}>
+            <InputField
+              label={`Size (${symbol.split('-')[0]})`}
+              value={size}
+              onChangeText={setSize}
+              placeholder="0.00"
+              keyboardType="decimal-pad"
+            />
+            {sizeUsdDisplay && (
+              <Text style={styles.sizeUsdHint}>
+                {'\u2248'} ${sizeUsdDisplay} USD
+              </Text>
+            )}
 
-        {/* Leverage */}
-        <View style={styles.leverageSection}>
-          <Text style={styles.label}>Leverage</Text>
-          <View style={styles.leveragePills}>
-            {LEVERAGE_OPTIONS.map((lev) => (
-              <FilterPill
-                key={lev}
-                label={lev}
-                active={leverage === lev}
-                onPress={() => setLeverage(lev)}
-              />
-            ))}
+            {/* Quick size buttons */}
+            <View style={styles.sizePresets}>
+              {SIZE_PRESETS.map((preset) => (
+                <TouchableOpacity
+                  key={preset.label}
+                  style={styles.sizePresetBtn}
+                  onPress={() => handleSizePreset(preset.fraction)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.sizePresetText}>{preset.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          {/* Leverage */}
+          <View style={styles.leverageSection}>
+            <View style={styles.leverageHeader}>
+              <Text style={styles.label}>Leverage</Text>
+              <Text style={styles.leverageValue}>{leverage}</Text>
+            </View>
+            <View style={styles.leveragePills}>
+              {LEVERAGE_OPTIONS.map((lev) => (
+                <FilterPill
+                  key={lev}
+                  label={lev}
+                  active={leverage === lev}
+                  onPress={() => {
+                    setLeverage(lev);
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  }}
+                />
+              ))}
+            </View>
           </View>
         </View>
 
-        {/* Order Summary */}
-        <Panel style={styles.summaryPanel}>
-          <SummaryRow
-            label="Entry"
-            value={priceReady ? `$${orderSummary.entry.toFixed(2)}` : '…'}
-          />
-          <SummaryRow
-            label="Notional"
-            value={
-              orderSummary.sizeUsd > 0
-                ? `$${orderSummary.sizeUsd.toFixed(2)}`
-                : '—'
-            }
-          />
-          <SummaryRow
-            label="Margin"
-            value={
-              orderSummary.margin > 0
-                ? `$${orderSummary.margin.toFixed(2)}`
-                : '—'
-            }
-          />
-          <SummaryRow
-            label="Liq. Price"
-            value={
-              orderSummary.liqPrice > 0
-                ? `$${orderSummary.liqPrice.toFixed(2)}`
-                : '—'
-            }
-            valueColor={
-              orderSummary.liqPrice > 0 ? colors.warning : colors.textMuted
-            }
-          />
-          <SummaryRow
-            label="Est. Fee"
-            value={
-              orderSummary.fee > 0 ? `$${orderSummary.fee.toFixed(4)}` : '—'
-            }
-          />
-          <SummaryRow
-            label="Slippage"
-            value={`${(orderSummary.slippagePct * 100).toFixed(1)}%`}
-            valueColor={colors.textSecondary}
-          />
-        </Panel>
+        {/* ========== 6. ORDER SUMMARY (collapsible) ========== */}
+        <TouchableOpacity
+          style={styles.summaryContainer}
+          onPress={toggleSummary}
+          activeOpacity={0.85}
+        >
+          <Panel style={styles.summaryPanel}>
+            {/* Collapsed preview line */}
+            <View style={styles.summaryPreview}>
+              <Text style={styles.summaryPreviewText}>
+                Entry ~${priceReady ? orderSummary.entry.toFixed(2) : '...'}
+                {'  |  '}
+                Liq ~${orderSummary.liqPrice > 0 ? orderSummary.liqPrice.toFixed(2) : '...'}
+              </Text>
+              <Text style={styles.summaryChevron}>
+                {summaryExpanded ? '\u25B4' : '\u25BE'}
+              </Text>
+            </View>
+
+            {/* Expanded details */}
+            {summaryExpanded && (
+              <View style={styles.summaryExpanded}>
+                <View style={styles.summarySeparator} />
+                <SummaryRow
+                  label="Entry"
+                  value={priceReady ? `$${orderSummary.entry.toFixed(2)}` : '\u2026'}
+                />
+                <SummaryRow
+                  label="Notional"
+                  value={
+                    orderSummary.sizeUsd > 0
+                      ? `$${orderSummary.sizeUsd.toFixed(2)}`
+                      : '\u2014'
+                  }
+                />
+                <SummaryRow
+                  label="Margin"
+                  value={
+                    orderSummary.margin > 0
+                      ? `$${orderSummary.margin.toFixed(2)}`
+                      : '\u2014'
+                  }
+                />
+                <SummaryRow
+                  label="Liq. Price"
+                  value={
+                    orderSummary.liqPrice > 0
+                      ? `$${orderSummary.liqPrice.toFixed(2)}`
+                      : '\u2014'
+                  }
+                  valueColor={
+                    orderSummary.liqPrice > 0 ? colors.warning : colors.textMuted
+                  }
+                />
+                <SummaryRow
+                  label="Est. Fee"
+                  value={
+                    orderSummary.fee > 0 ? `$${orderSummary.fee.toFixed(4)}` : '\u2014'
+                  }
+                />
+                <SummaryRow
+                  label="Slippage"
+                  value={`${(orderSummary.slippagePct * 100).toFixed(1)}%`}
+                  valueColor={colors.textSecondary}
+                />
+              </View>
+            )}
+          </Panel>
+        </TouchableOpacity>
 
         {/* Wallet not connected hint */}
         {!connected && (
@@ -466,31 +631,48 @@ export function TradeScreen() {
           </Text>
         )}
 
-        {/* CTA */}
-        <TradeButton
-          label={
-            submitting
-              ? 'Signing…'
-              : `OPEN ${direction.toUpperCase()} POSITION`
-          }
-          direction={direction}
-          fullWidth
-          disabled={!canTrade}
-          onPress={handleOpenPosition}
-        />
+        {/* ========== 7. TRADE CTA BUTTON ========== */}
+        <View style={styles.ctaWrap}>
+          {submitting ? (
+            <View
+              style={[
+                styles.ctaButton,
+                { backgroundColor: isLong ? colors.long : colors.short, opacity: 0.7 },
+              ]}
+            >
+              <ActivityIndicator color={colors.bgVoid} size="small" />
+              <Text style={styles.ctaButtonText}>Signing...</Text>
+            </View>
+          ) : (
+            <TouchableOpacity
+              style={[
+                styles.ctaButton,
+                {
+                  backgroundColor: isLong ? colors.long : colors.short,
+                },
+                !canTrade && styles.ctaDisabled,
+              ]}
+              onPress={handleOpenPosition}
+              disabled={!canTrade}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.ctaButtonText}>
+                {isLong ? 'Open Long \u25B2' : 'Open Short \u25BC'}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
 
-        {submitting && (
-          <View style={styles.signingRow}>
-            <ActivityIndicator color={colors.accent} size="small" />
-            <Text style={styles.signingText}>
-              Waiting for wallet signature…
-            </Text>
-          </View>
-        )}
+        {/* Bottom spacer */}
+        <View style={{ height: 32 }} />
       </ScrollView>
     </SafeAreaView>
   );
 }
+
+/* ================================================================
+   HELPER COMPONENTS
+   ================================================================ */
 
 function formatLarge(value: number): string {
   if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
@@ -519,19 +701,21 @@ function StatCell({
 
 const statCellStyles = StyleSheet.create({
   cell: {
-    minWidth: 72,
-    paddingHorizontal: 12,
+    minWidth: 64,
+    paddingHorizontal: 10,
     justifyContent: 'center',
-    gap: 2,
+    gap: 1,
   },
   label: {
     fontFamily: fonts.body,
-    fontSize: 10,
-    color: colors.textSecondary,
+    fontSize: 9,
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   value: {
     fontFamily: fonts.mono,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
     color: colors.text,
     fontVariant: ['tabular-nums'],
@@ -566,7 +750,7 @@ const summaryStyles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingVertical: 4,
+    paddingVertical: 3,
   },
   label: {
     fontFamily: fonts.body,
@@ -575,64 +759,148 @@ const summaryStyles = StyleSheet.create({
   },
   value: {
     fontFamily: fonts.mono,
-    fontSize: 13,
+    fontSize: 12,
     color: colors.text,
     fontVariant: ['tabular-nums'],
   },
 });
+
+/* ================================================================
+   STYLES
+   ================================================================ */
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.bgVoid,
   },
-  header: {
+
+  /* -- 1. Market Header Bar -- */
+  headerBar: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    backgroundColor: colors.bgVoid,
   },
-  title: {
+  marketSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    minHeight: 44,
+    paddingRight: 8,
+  },
+  marketSymbol: {
     fontFamily: fonts.display,
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '700',
     color: colors.text,
   },
-  price: {
+  marketDropdownArrow: {
+    fontFamily: fonts.body,
+    fontSize: 8,
+    color: colors.textSecondary,
+    marginTop: 1,
+  },
+  headerPriceWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerPrice: {
     fontFamily: fonts.mono,
-    fontSize: 18,
+    fontSize: 22,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
+    color: colors.text,
+  },
+  changeBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: radii.full,
+    minHeight: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  changeBadgeText: {
+    fontFamily: fonts.mono,
+    fontSize: 12,
     fontWeight: '700',
     fontVariant: ['tabular-nums'],
   },
+  changeBadgePlaceholder: {
+    width: 64,
+  },
+
+  /* -- Scroll -- */
   scroll: { flex: 1 },
   content: {
-    padding: 16,
-    gap: 16,
-    paddingBottom: 32,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    gap: 12,
   },
-  chartPanel: { gap: 8 },
+
+  /* -- 2. Chart Section -- */
+  chartSection: {
+    gap: 6,
+  },
+  chartControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
   timeframes: {
     flexDirection: 'row',
-    gap: 4,
+    gap: 3,
   },
   tfBtn: {
-    paddingHorizontal: 10,
+    paddingHorizontal: 9,
     paddingVertical: 4,
     borderRadius: radii.sm,
     backgroundColor: colors.bgElevated,
+    minHeight: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   tfBtnActive: {
     backgroundColor: colors.accent,
   },
   tfText: {
     fontFamily: fonts.mono,
-    fontSize: 11,
+    fontSize: 10,
     color: colors.textSecondary,
   },
   tfTextActive: {
     color: colors.text,
+    fontWeight: '600',
   },
+  collapseToggle: {
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
+  collapseText: {
+    fontFamily: fonts.body,
+    fontSize: 11,
+    color: colors.textSecondary,
+  },
+
+  /* -- 3. Quick Stats Strip -- */
+  statsRow: {
+    backgroundColor: colors.bgInset,
+    borderRadius: radii.md,
+    maxHeight: 48,
+  },
+  statsRowContent: {
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+  },
+
+  /* -- 4. Direction Toggle -- */
   directionToggle: {
     flexDirection: 'row',
     height: 52,
@@ -644,42 +912,118 @@ const styles = StyleSheet.create({
   },
   directionBtn: {
     flex: 1,
+    flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
     borderRadius: radii.md,
+    gap: 6,
+    minHeight: 44,
   },
-  statsRow: {
-    backgroundColor: colors.bgInset,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: colors.border,
-    maxHeight: 56,
-  },
-  statsRowContent: {
-    alignItems: 'center',
-    paddingVertical: 6,
-  },
-  directionText: {
+  directionLabel: {
     fontFamily: fonts.display,
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '700',
-    letterSpacing: 1,
+    letterSpacing: 0.5,
   },
-  leverageSection: { gap: 8 },
+  directionArrow: {
+    fontSize: 10,
+  },
+
+  /* -- 5. Order Form -- */
+  orderForm: {
+    gap: 14,
+  },
+  sizeSection: {
+    gap: 6,
+  },
+  sizeUsdHint: {
+    fontFamily: fonts.mono,
+    fontSize: 12,
+    color: colors.textSecondary,
+    paddingLeft: 4,
+    fontVariant: ['tabular-nums'],
+  },
+  sizePresets: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  sizePresetBtn: {
+    flex: 1,
+    height: 36,
+    backgroundColor: colors.bgElevated,
+    borderRadius: radii.md,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  sizePresetText: {
+    fontFamily: fonts.mono,
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  leverageSection: {
+    gap: 8,
+  },
+  leverageHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
   label: {
     fontFamily: fonts.body,
     fontSize: 14,
     color: colors.textSecondary,
   },
+  leverageValue: {
+    fontFamily: fonts.mono,
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.accent,
+    fontVariant: ['tabular-nums'],
+  },
   leveragePills: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: 6,
   },
+
+  /* -- 6. Order Summary -- */
+  summaryContainer: {},
   summaryPanel: {
     backgroundColor: colors.bgInset,
-    gap: 2,
+    padding: 12,
+    gap: 0,
   },
+  summaryPreview: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    minHeight: 28,
+  },
+  summaryPreviewText: {
+    fontFamily: fonts.mono,
+    fontSize: 12,
+    color: colors.textSecondary,
+    fontVariant: ['tabular-nums'],
+  },
+  summaryChevron: {
+    fontFamily: fonts.body,
+    fontSize: 14,
+    color: colors.textSecondary,
+  },
+  summaryExpanded: {
+    gap: 2,
+    marginTop: 4,
+  },
+  summarySeparator: {
+    height: 1,
+    backgroundColor: colors.border,
+    marginBottom: 6,
+  },
+
+  /* -- Hint text -- */
   hint: {
     fontFamily: fonts.body,
     fontSize: 13,
@@ -687,16 +1031,28 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingHorizontal: 16,
   },
-  signingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    marginTop: 8,
+
+  /* -- 7. Trade CTA -- */
+  ctaWrap: {
+    marginTop: 4,
   },
-  signingText: {
-    fontFamily: fonts.body,
-    fontSize: 13,
-    color: colors.textMuted,
+  ctaButton: {
+    height: 56,
+    borderRadius: radii.xl,
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    width: '100%',
+  },
+  ctaButtonText: {
+    fontFamily: fonts.display,
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.bgVoid,
+    letterSpacing: 0.5,
+  },
+  ctaDisabled: {
+    opacity: 0.5,
   },
 });

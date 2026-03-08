@@ -1,4 +1,4 @@
-package com.percolatormobile
+package com.percolator.seeker
 
 import android.os.Build
 import android.os.Bundle

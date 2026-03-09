@@ -107,11 +107,12 @@ const ACCT_MATCHER_CONTEXT_OFF = 152;
 const ACCT_OWNER_OFF = 184;
 const ACCT_KIND_OFF = 24; // 0=User, 1=LP
 
-// Engine section starts at 392 (header=72 + config=320)
-const ENGINE_OFF = 392;
+// Slab layout offsets (must match percolator-prog compiled constants)
+// HEADER_LEN=104, CONFIG_LEN=512, ENGINE_OFF=624, ACCOUNTS_OFFSET=9424
+const ENGINE_OFF = 624;
 
-// Accounts section starts at ENGINE_OFF + 328 (engine size)
-const ACCOUNTS_SECTION_OFF = ENGINE_OFF + 328;
+// ACCOUNTS_SECTION_OFF = ENGINE_OFF + offset_of!(RiskEngine, accounts)
+const ACCOUNTS_SECTION_OFF = ENGINE_OFF + 9424; // 10048
 
 interface SlabConfig {
   programId: PublicKey;

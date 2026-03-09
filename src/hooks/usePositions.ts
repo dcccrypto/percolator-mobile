@@ -54,8 +54,10 @@ const ACCT_POSITION_SIZE_OFF = 80;
 const ACCT_ENTRY_PRICE_OFF = 96;
 const ACCT_OWNER_OFF = 184;
 
-// Slab header + config start offsets (matches slab.ts ENGINE_OFF = 392)
-const ACCOUNTS_SECTION_OFF = 392 + 328; // header(72) + config(320) + engine(328)
+// Slab layout offsets (must match percolator-prog compiled constants)
+// HEADER_LEN=104, CONFIG_LEN=512, ENGINE_OFF=624, ACCOUNTS_OFFSET=9424
+// ACCOUNTS_SECTION_OFF = ENGINE_OFF + offset_of!(RiskEngine, accounts)
+const ACCOUNTS_SECTION_OFF = 624 + 9424; // 10048
 
 function parseAccounts(
   data: Uint8Array,

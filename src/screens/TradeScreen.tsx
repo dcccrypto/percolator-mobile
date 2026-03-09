@@ -75,8 +75,11 @@ export function TradeScreen() {
     if (!settings.loaded) settings.load();
   }, [settings.loaded]);
 
-  // Use live streamed price, fall back to 0 while loading
-  const price = livePrice ?? 0;
+  // Use live streamed price → API market price → last price history point → 0
+  const price = livePrice
+    ?? currentMarket?.markPrice
+    ?? currentMarket?.lastPrice
+    ?? (priceHistory.length > 0 ? priceHistory[priceHistory.length - 1] : 0);
   const priceReady = price > 0;
 
   // Price flash effect (green/red on change)

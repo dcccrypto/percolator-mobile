@@ -198,7 +198,7 @@ function EmptyNotConnected() {
           </View>
           <Text style={styles.stepArrow}>→</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.stepBtn} onPress={() => navigation?.navigate('CreateMarket' as never)} activeOpacity={0.7}>
+        <TouchableOpacity style={styles.stepBtn} onPress={() => navigation?.navigate('More' as never, { screen: 'CreateMarket' } as never)} activeOpacity={0.7}>
           <Text style={styles.stepNum}>3</Text>
           <View style={styles.stepContent}>
             <Text style={styles.stepLabel}>Create Your Own Market</Text>

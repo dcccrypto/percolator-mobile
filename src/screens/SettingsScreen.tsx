@@ -186,23 +186,7 @@ export function SettingsScreen() {
         <Panel style={styles.section}>
           <SettingsRow
             label="Network"
-            value={settings.network === 'devnet' ? 'Devnet' : 'Mainnet'}
-            hasChevron
-            onPress={() => {
-              const target = settings.network === 'devnet' ? 'mainnet-beta' : 'devnet';
-              if (target === 'mainnet-beta') {
-                Alert.alert(
-                  'Switch to Mainnet?',
-                  'You are about to switch to mainnet-beta. Real funds will be at risk. Continue?',
-                  [
-                    { text: 'Cancel', style: 'cancel' },
-                    { text: 'Switch', style: 'destructive', onPress: () => settings.setNetwork(target) },
-                  ],
-                );
-              } else {
-                settings.setNetwork(target);
-              }
-            }}
+            value="Devnet"
           />
           <SettingsRow label="RPC Endpoint" value={settings.rpcEndpoint} />
           <SettingsRow

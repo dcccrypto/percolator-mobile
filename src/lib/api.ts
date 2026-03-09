@@ -152,6 +152,24 @@ export const api = {
     return fetchJSON(`/funding/${slab}`);
   },
 
+  /** Get detailed funding rate with 24h history */
+  async getFundingDetails(slab: string): Promise<{
+    hourlyRatePercent: number;
+    dailyRatePercent: number;
+    annualizedPercent: number;
+    last24hHistory: { timestamp: string; rate: number }[];
+  }> {
+    return fetchJSON(`/funding/${slab}/details`);
+  },
+
+  /** Get open interest data with history */
+  async getOpenInterest(slab: string): Promise<{
+    totalOpenInterest: number;
+    history: { timestamp: string; totalOi: number }[];
+  }> {
+    return fetchJSON(`/oi/${slab}`);
+  },
+
   /** Get leaderboard rankings */
   async getLeaderboard(period?: string): Promise<{ traders: LeaderboardEntry[] }> {
     const query = period ? `?period=${period}` : '';

@@ -73,7 +73,7 @@ export function usePriceHistory(
         // Use windowed data if we have enough points, otherwise fall back to all data
         const finalData = windowed.length >= 2 ? windowed : sorted;
 
-        setPrices(finalData.map((d) => d.last_price));
+        setPrices(finalData.map((d) => d.last_price).filter((v) => Number.isFinite(v)));
         setError(null);
         hasFetchedRef.current = true;
       }

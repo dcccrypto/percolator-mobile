@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { Alert, Linking } from 'react-native';
 import { transact } from '@solana-mobile/mobile-wallet-adapter-protocol';
 import { PublicKey } from '@solana/web3.js';
 import * as SecureStore from 'expo-secure-store';
@@ -56,13 +57,29 @@ export function useMWA() {
     } catch (err) {
       captureException(err, { source: 'useMWA.connect' });
 
+      const rawMessage = err instanceof Error ? err.message : String(err);
+      const isNoWallet =
+        /no installed wallet|wallet.*not found|Found no.*wallet/i.test(rawMessage);
+
+      if (isNoWallet) {
+        Alert.alert(
+          'No Wallet Found',
+          'Please install a Solana wallet (Phantom or Solflare) to continue.',
+          [
+            { text: 'Install Phantom', onPress: () => Linking.openURL('https://phantom.app/download') },
+            { text: 'Cancel', style: 'cancel' },
+          ],
+        );
+      }
+
       const USER_CONTROLLED_MESSAGES = new Set([
         'Wallet returned no accounts. Please try again.',
       ]);
-      const rawMessage = err instanceof Error ? err.message : '';
-      const message = USER_CONTROLLED_MESSAGES.has(rawMessage)
-        ? rawMessage
-        : 'Failed to connect wallet. Please try again.';
+      const message = isNoWallet
+        ? 'No Solana wallet found. Please install Phantom or Solflare.'
+        : USER_CONTROLLED_MESSAGES.has(rawMessage)
+          ? rawMessage
+          : 'Failed to connect wallet. Please try again.';
 
       setConnecting(false);
       setError(message);

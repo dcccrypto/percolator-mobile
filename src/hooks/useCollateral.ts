@@ -67,20 +67,17 @@ function readPubkey(buf: Uint8Array, off: number): PublicKey {
   return new PublicKey(buf.slice(off, off + 32));
 }
 
-const HEADER_LEN = 72;
-const CONFIG_OFF = HEADER_LEN;
-const CFG_PROGRAM_ID_OFF = 0;
-const CFG_ORACLE_AUTHORITY_OFF = 64;
-const CFG_INDEX_FEED_ID_OFF = 96;
-const CFG_VAULT_OFF = 128;
-const CFG_COLLATERAL_MINT_OFF = 160;
-
-// Slab layout offsets (must match percolator-prog compiled constants)
-// HEADER_LEN=104, CONFIG_LEN=512, ENGINE_OFF=624, ACCOUNTS_OFFSET=9424
-const ACCOUNTS_SECTION_OFF = 624 + 9424; // 10048
-const ACCT_SIZE = 256;
-const ACCT_KIND_OFF = 24;
-const ACCT_OWNER_OFF = 184;
+import {
+  detectSlabLayout,
+  CFG_PROGRAM_ID_OFF,
+  CFG_ORACLE_AUTHORITY_OFF,
+  CFG_INDEX_FEED_ID_OFF,
+  CFG_VAULT_OFF,
+  CFG_COLLATERAL_MINT_OFF,
+  ACCT_KIND_OFF,
+  ACCT_OWNER_OFF,
+  type SlabLayout,
+} from '../lib/slabLayout';
 
 const PYTH_PUSH_ORACLE_PROGRAM_ID = new PublicKey(
   'pythWSnswVUd12oZpeFP8e9CVaEqJg25g1Vtc2biRsT',
@@ -94,8 +91,8 @@ interface SlabConfig {
   feedIdHex: string;
 }
 
-function parseSlabConfig(data: Uint8Array): SlabConfig {
-  const base = CONFIG_OFF;
+function parseSlabConfig(data: Uint8Array, layout: SlabLayout): SlabConfig {
+  const base = layout.configOff;
   return {
     programId: readPubkey(data, base + CFG_PROGRAM_ID_OFF),
     vault: readPubkey(data, base + CFG_VAULT_OFF),
@@ -136,14 +133,14 @@ function derivePythPushOraclePDA(feedIdHex: string): PublicKey {
   return pda;
 }
 
-function findUserIdx(data: Uint8Array, owner: PublicKey): number {
-  let off = ACCOUNTS_SECTION_OFF;
+function findUserIdx(data: Uint8Array, owner: PublicKey, layout: SlabLayout): number {
+  let off = layout.accountsOff;
   let idx = 0;
-  while (off + ACCT_SIZE <= data.length) {
+  while (off + layout.acctSize <= data.length) {
     const kind = data[off + ACCT_KIND_OFF];
     const acctOwner = readPubkey(data, off + ACCT_OWNER_OFF);
     if (kind === 0 && acctOwner.equals(owner)) return idx;
-    off += ACCT_SIZE;
+    off += layout.acctSize;
     idx++;
   }
   return -1;
@@ -268,21 +265,23 @@ export function useCollateral(): UseCollateralResult {
         if (!slabInfo) throw new Error('Market not found on-chain');
 
         const data = new Uint8Array(slabInfo.data);
-        const config = parseSlabConfig(data);
+        const layout = detectSlabLayout(data);
+        if (!layout) throw new Error('Unrecognised slab layout');
+        const config = parseSlabConfig(data, layout);
 
         const userAta = deriveATA(publicKey, config.collateralMint);
 
         // Check if user has an account on the slab
-        let userIdx = findUserIdx(data, publicKey);
+        let userIdx = findUserIdx(data, publicKey, layout);
         const needsInit = userIdx < 0;
 
         if (needsInit) {
           // Count total accounts for new index
           let total = 0;
-          let scanOff = ACCOUNTS_SECTION_OFF;
-          while (scanOff + ACCT_SIZE <= data.length) {
+          let scanOff = layout.accountsOff;
+          while (scanOff + layout.acctSize <= data.length) {
             total++;
-            scanOff += ACCT_SIZE;
+            scanOff += layout.acctSize;
           }
           userIdx = total;
         }
@@ -330,9 +329,11 @@ export function useCollateral(): UseCollateralResult {
         if (!slabInfo) throw new Error('Market not found on-chain');
 
         const data = new Uint8Array(slabInfo.data);
-        const config = parseSlabConfig(data);
+        const layout = detectSlabLayout(data);
+        if (!layout) throw new Error('Unrecognised slab layout');
+        const config = parseSlabConfig(data, layout);
 
-        const userIdx = findUserIdx(data, publicKey);
+        const userIdx = findUserIdx(data, publicKey, layout);
         if (userIdx < 0) throw new Error('No account found on this market — deposit first');
 
         const userAta = deriveATA(publicKey, config.collateralMint);

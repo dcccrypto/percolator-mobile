@@ -152,40 +152,69 @@ def measure_glyph_width(font_size: int) -> int:
     return (bbox[2] - bbox[0]) if bbox else 0
 
 
+def measure_glyph_size(font_size: int) -> tuple:
+    """Return (width, height) of the rendered sheared P glyph at given font size."""
+    glyph = make_italic_glyph("P", font_size, (255, 255, 255), shear=0.22)
+    bbox = glyph.getbbox()
+    if bbox:
+        return (bbox[2] - bbox[0], bbox[3] - bbox[1])
+    return (0, 0)
+
+
 def generate_adaptive_icon_fg():
     """512×512 adaptive icon foreground — italic P on transparent bg.
-    Glyph auto-scaled to exactly 55% canvas width (282px) per designer spec.
-    Nudge corrected so glyph sits centred within the circular mask overlay."""
+
+    Android safe zone: 66% of 512px = 338px centred → inset 87px on every edge
+    (safe zone spans 87–425px on both axes).
+
+    Glyph is scaled so its LARGEST dimension (width or height) fits within
+    ~75% of the safe zone (253px), giving a comfortable margin on all OEM
+    mask shapes (circle, squircle, rounded-rect).
+
+    No nudge offsets — glyph is centered at exact canvas centre (256, 256).
+    Shear compensation for italic lean is handled by make_italic_glyph's
+    square-pad step which already centres the glyph geometrically.
+    """
     SIZE = 512
-    TARGET_W = 282  # 55% of 512px — designer spec (re-review Mar 2026)
+    SAFE_INSET = 87           # Android 66% safe zone inset
+    SAFE_SIZE = SIZE - 2 * SAFE_INSET   # 338px
+    MAX_GLYPH_DIM = int(SAFE_SIZE * 0.75)  # 253px — ~50% of canvas, fits all masks
     img = Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))
     cx = cy = SIZE // 2
 
-    # Auto-scale font_size to hit TARGET_W (±3px tolerance).
-    # Baseline: font_size=366 → ~282px sheared glyph width (calculated from
-    # raw P metrics: width=250, height=300, shear_extra=66 at font_size=410).
-    font_size = 366
-    for _ in range(6):
-        actual_w = measure_glyph_width(font_size)
-        if abs(actual_w - TARGET_W) <= 3:
+    # Auto-scale font_size so the LARGER glyph dimension ≤ MAX_GLYPH_DIM.
+    # Start from a conservative estimate and iterate toward the target.
+    font_size = 280
+    for _ in range(8):
+        gw, gh = measure_glyph_size(font_size)
+        largest = max(gw, gh)
+        if largest == 0:
             break
-        if actual_w > 0:
-            font_size = int(font_size * TARGET_W / actual_w)
-    actual_w = measure_glyph_width(font_size)
-    print(f"  adaptive-icon: font_size={font_size}, glyph_width={actual_w}px "
-          f"({actual_w/SIZE*100:.1f}% of {SIZE}px)")
+        if abs(largest - MAX_GLYPH_DIM) <= 3:
+            break
+        font_size = int(font_size * MAX_GLYPH_DIM / largest)
+    gw, gh = measure_glyph_size(font_size)
+    print(f"  adaptive-icon: font_size={font_size}, glyph={gw}×{gh}px "
+          f"(safe zone {SAFE_SIZE}px, max_dim={MAX_GLYPH_DIM}px, "
+          f"bounds={cx - gh//2}–{cx + gh//2}px vert)")
 
-    # Nudge: push right to counter shear lean in circle mask (+3% canvas),
-    # push down to counter bowl-heavy top bias (+2.5% canvas).
-    nx = int(SIZE * 0.030)   # ~15px right
-    ny = int(SIZE * 0.025)   # ~13px down
+    # Verify glyph fits within safe zone bounds — hard-clip font_size if needed
+    while max(gw, gh) > SAFE_SIZE - 20 and font_size > 100:
+        font_size = int(font_size * 0.90)
+        gw, gh = measure_glyph_size(font_size)
+
+    # No optical nudge — let make_italic_glyph's square-pad keep true centre.
+    # The shear transform moves the visual weight slightly; the square canvas
+    # already compensates for this, so geometric centre == safe placement.
+    nx = 0
+    ny = 0
 
     glyph_glow = make_italic_glyph("P", font_size, (*ACCENT,), shear=0.22)
-    glyph_glow = glyph_glow.filter(ImageFilter.GaussianBlur(radius=14))
+    glyph_glow = glyph_glow.filter(ImageFilter.GaussianBlur(radius=12))
     img = place_glyph(img, glyph_glow, cx, cy, nudge_x=nx, nudge_y=ny)
-    # Tighter glow for vivid accent
+    # Tighter inner glow for vivid #9945FF
     glyph_glow2 = make_italic_glyph("P", font_size, (*ACCENT,), shear=0.22)
-    glyph_glow2 = glyph_glow2.filter(ImageFilter.GaussianBlur(radius=5))
+    glyph_glow2 = glyph_glow2.filter(ImageFilter.GaussianBlur(radius=4))
     img = place_glyph(img, glyph_glow2, cx, cy, nudge_x=nx, nudge_y=ny)
 
     # Pure #FFFFFF glyph (designer spec: not lavender-grey TEXT)

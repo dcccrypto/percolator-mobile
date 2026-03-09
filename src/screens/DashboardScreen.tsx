@@ -168,7 +168,8 @@ function TradeRow({ trade }: { trade: TraderTrade }) {
 }
 
 function EmptyNotConnected() {
-  const navigation = useNavigation();
+  let navigation: ReturnType<typeof useNavigation> | null = null;
+  try { navigation = useNavigation(); } catch { /* test env */ }
   return (
     <View style={styles.emptyContainer}>
       {/* Devnet hero */}
@@ -181,7 +182,7 @@ function EmptyNotConnected() {
       {/* Quick-start steps */}
       <View style={styles.quickStart}>
         <Text style={styles.quickStartTitle}>GET STARTED</Text>
-        <TouchableOpacity style={styles.stepBtn} onPress={() => navigation.navigate('Faucet' as never)} activeOpacity={0.7}>
+        <TouchableOpacity style={styles.stepBtn} onPress={() => navigation?.navigate('Faucet' as never)} activeOpacity={0.7}>
           <Text style={styles.stepNum}>1</Text>
           <View style={styles.stepContent}>
             <Text style={styles.stepLabel}>Get Devnet SOL</Text>
@@ -189,7 +190,7 @@ function EmptyNotConnected() {
           </View>
           <Text style={styles.stepArrow}>→</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.stepBtn} onPress={() => navigation.navigate('Markets' as never)} activeOpacity={0.7}>
+        <TouchableOpacity style={styles.stepBtn} onPress={() => navigation?.navigate('Markets' as never)} activeOpacity={0.7}>
           <Text style={styles.stepNum}>2</Text>
           <View style={styles.stepContent}>
             <Text style={styles.stepLabel}>Browse Markets</Text>
@@ -197,7 +198,7 @@ function EmptyNotConnected() {
           </View>
           <Text style={styles.stepArrow}>→</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.stepBtn} onPress={() => navigation.navigate('CreateMarket' as never)} activeOpacity={0.7}>
+        <TouchableOpacity style={styles.stepBtn} onPress={() => navigation?.navigate('CreateMarket' as never)} activeOpacity={0.7}>
           <Text style={styles.stepNum}>3</Text>
           <View style={styles.stepContent}>
             <Text style={styles.stepLabel}>Create Your Own Market</Text>

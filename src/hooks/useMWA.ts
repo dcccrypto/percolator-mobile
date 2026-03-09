@@ -4,6 +4,7 @@ import { PublicKey } from '@solana/web3.js';
 import * as SecureStore from 'expo-secure-store';
 import { APP_IDENTITY } from '../lib/constants';
 import { CLUSTER } from '../lib/solana';
+import { captureException } from '../lib/errorReporting';
 
 const AUTH_TOKEN_KEY = 'mwa_auth_token';
 
@@ -53,6 +54,10 @@ export function useMWA() {
       setState({ connected: true, publicKey: pubkey, connecting: false, error: null });
       return pubkey;
     } catch (err) {
+      // Capture the raw error for remote monitoring BEFORE sanitizing for the user.
+      // The UI layer (OnboardingScreen) shows only sanitized messages — raw strings
+      // never reach the user (closes mobile #44, launch #962).
+      captureException(err, { source: 'useMWA.connect' });
       const message = err instanceof Error ? err.message : 'Failed to connect wallet';
       setState({ connected: false, publicKey: null, connecting: false, error: message });
       return null;

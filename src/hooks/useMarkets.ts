@@ -6,6 +6,7 @@ const MARKETS_CACHE_KEY = 'percolator_markets_cache';
 
 interface Market {
   slabAddress: string;
+  mintAddress: string;
   symbol: string;
   name: string;
   lastPrice: number | null;
@@ -16,11 +17,13 @@ interface Market {
   tradingFeeBps: number;
   status: string;
   change24h: number;
+  logoUrl: string | null;
 }
 
 function mapMarket(m: any): Market {
   return {
     slabAddress: m.slabAddress,
+    mintAddress: m.mintAddress ?? '',
     symbol: m.symbol,
     name: m.name,
     lastPrice: m.lastPrice,
@@ -31,6 +34,7 @@ function mapMarket(m: any): Market {
     tradingFeeBps: m.tradingFeeBps,
     status: m.status,
     change24h: 0,
+    logoUrl: m.logoUrl ?? null,
   };
 }
 

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, memo } from 'react';
+import React, { useState, useMemo, useCallback, memo, useRef } from 'react';
 import {
   View,
   Text,
@@ -53,19 +53,75 @@ function FlameIcon({ size = 14 }: { size?: number }) {
   );
 }
 
-/** Derive token logo URL from symbol, e.g. "SOL-PERP" → Coingecko fallback */
-function getLogoUrl(symbol: string): string | null {
+/**
+ * TokenLogo — renders a token logo with a CDN fallback chain.
+ *
+ * Priority order (PERC-535, closes mobile #50):
+ *   1. API-supplied logoUrl (may be null or deprecated solana-labs URL)
+ *   2. Jupiter Token List CDN — active, maintained, covers all Solana tokens
+ *   3. Text placeholder (first 2 chars of base symbol)
+ *
+ * Uses onError to advance through the chain; React key resets Image on URL change.
+ */
+const TokenLogo = memo(function TokenLogo({
+  logoUrl,
+  mintAddress,
+  symbol,
+  size = 36,
+}: {
+  logoUrl: string | null;
+  mintAddress: string;
+  symbol: string;
+  size?: number;
+}) {
   const base = symbol.replace(/-PERP$/i, '').toUpperCase();
-  const slugMap: Record<string, string> = {
-    SOL: 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png',
-    BTC: 'https://assets.coingecko.com/coins/images/1/thumb/bitcoin.png',
-    ETH: 'https://assets.coingecko.com/coins/images/279/thumb/ethereum.png',
-    JUP: 'https://assets.coingecko.com/coins/images/34188/thumb/jup.png',
-    WIF: 'https://assets.coingecko.com/coins/images/33566/thumb/dogwifhat.png',
-    BONK: 'https://assets.coingecko.com/coins/images/28600/thumb/bonk.jpg',
-  };
-  return slugMap[base] ?? null;
-}
+  const initials = base.slice(0, 2);
+
+  // Build ordered fallback list once per render cycle
+  const fallbacks = useMemo<string[]>(() => {
+    const urls: string[] = [];
+    if (logoUrl) urls.push(logoUrl);
+    if (mintAddress) {
+      // Jupiter CDN (active, maintained — replaces deprecated solana-labs/token-list)
+      urls.push(`https://cdn.jup.ag/tokens/${mintAddress}`);
+      // Birdeye CDN as secondary fallback
+      urls.push(`https://public.birdeye.so/token_asset?address=${mintAddress}`);
+    }
+    return urls;
+  }, [logoUrl, mintAddress]);
+
+  const [idx, setIdx] = useState(0);
+  const lastFallbacksRef = useRef(fallbacks);
+
+  // Reset index when fallbacks change (e.g. market changes)
+  if (lastFallbacksRef.current !== fallbacks) {
+    lastFallbacksRef.current = fallbacks;
+    // Intentionally mutate during render (safe: same-tick reset)
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+  }
+
+  const onError = useCallback(() => setIdx((i) => i + 1), []);
+  const src = fallbacks[idx];
+
+  const logoStyle = { width: size, height: size, borderRadius: size / 2 };
+
+  if (!src) {
+    return (
+      <View style={[styles.logoFallback, logoStyle]}>
+        <Text style={styles.logoFallbackText}>{initials}</Text>
+      </View>
+    );
+  }
+
+  return (
+    <Image
+      key={src}
+      source={{ uri: src }}
+      style={logoStyle}
+      onError={onError}
+    />
+  );
+});
 
 // Fixed card height for getItemLayout (card ~184px + 8px gap)
 const CARD_HEIGHT = 192;
@@ -86,6 +142,7 @@ const MarketCard = memo(function MarketCard({
 }: {
   market: {
     slabAddress: string;
+    mintAddress: string;
     symbol: string;
     name?: string;
     lastPrice: number | null;
@@ -93,6 +150,7 @@ const MarketCard = memo(function MarketCard({
     totalOpenInterest: number | null;
     maxLeverage: number;
     volume24h?: number | null;
+    logoUrl?: string | null;
   };
   onTrade: (slabAddress: string, symbol: string, direction?: 'long' | 'short') => void;
 }) {
@@ -112,24 +170,20 @@ const MarketCard = memo(function MarketCard({
   const vol24h = market.volume24h ?? (market.totalOpenInterest ?? 0) * 0.3; // proxy if unavailable
   const isHot = oiPct >= HOT_OI_PCT || vol24h >= HOT_VOL_USD;
 
-  const logoUrl = getLogoUrl(market.symbol);
   const baseName = market.name ?? market.symbol.replace(/-PERP$/i, '') + ' Perp';
 
   return (
     <Panel style={styles.card}>
       {/* Header row: logo + text + price */}
       <View style={styles.cardHeader}>
-        {/* Logo */}
+        {/* Logo — CDN fallback chain (PERC-535) */}
         <View style={styles.logoWrap}>
-          {logoUrl ? (
-            <Image source={{ uri: logoUrl }} style={styles.logoImg} />
-          ) : (
-            <View style={styles.logoFallback}>
-              <Text style={styles.logoFallbackText}>
-                {market.symbol.slice(0, 2)}
-              </Text>
-            </View>
-          )}
+          <TokenLogo
+            logoUrl={market.logoUrl ?? null}
+            mintAddress={market.mintAddress}
+            symbol={market.symbol}
+            size={36}
+          />
         </View>
 
         {/* Symbol + name col */}
@@ -380,7 +434,6 @@ const styles = StyleSheet.create({
   // Header
   cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   logoWrap: { width: 36, height: 36 },
-  logoImg: { width: 36, height: 36, borderRadius: 18 },
   logoFallback: {
     width: 36, height: 36, borderRadius: 18,
     backgroundColor: colors.bgInset,

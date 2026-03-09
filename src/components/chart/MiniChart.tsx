@@ -35,19 +35,21 @@ export function MiniChart({
   const width = Math.max(rawWidth, MIN_CHART_WIDTH);
   const height = Math.max(rawHeight, MIN_CHART_HEIGHT);
   const chartData = useMemo(() => {
-    if (!data || data.length < 2) return null;
+    // Filter out NaN/Infinity — corrupted API prices crash react-native-svg PathParser (GH #60)
+    const clean = data?.filter((v) => Number.isFinite(v)) ?? [];
+    if (clean.length < 2) return null;
 
     const padding = { top: 8, bottom: 8, left: 0, right: 0 };
     const chartW = width - padding.left - padding.right;
     const chartH = height - padding.top - padding.bottom;
 
-    const min = Math.min(...data);
-    const max = Math.max(...data);
+    const min = Math.min(...clean);
+    const max = Math.max(...clean);
     const range = max - min || 1; // Avoid division by zero for flat data
 
     // Build SVG path
-    const points = data.map((price, i) => {
-      const x = padding.left + (i / (data.length - 1)) * chartW;
+    const points = clean.map((price, i) => {
+      const x = padding.left + (i / (clean.length - 1)) * chartW;
       const y = padding.top + (1 - (price - min) / range) * chartH;
       return { x, y };
     });
@@ -59,7 +61,7 @@ export function MiniChart({
     // Closed path for gradient fill
     const fillPath = `${linePath} L ${points[points.length - 1].x.toFixed(1)} ${height} L ${points[0].x.toFixed(1)} ${height} Z`;
 
-    const isUp = data[data.length - 1] >= data[0];
+    const isUp = clean[clean.length - 1] >= clean[0];
     const lineColor = color ?? (isUp ? colors.long : colors.short);
 
     // Gridlines (3 horizontal)
@@ -68,8 +70,8 @@ export function MiniChart({
     );
 
     // Price labels
-    const lastPrice = data[data.length - 1];
-    const change = ((lastPrice - data[0]) / data[0]) * 100;
+    const lastPrice = clean[clean.length - 1];
+    const change = ((lastPrice - clean[0]) / clean[0]) * 100;
 
     return {
       linePath,

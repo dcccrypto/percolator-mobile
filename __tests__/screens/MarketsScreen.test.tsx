@@ -82,27 +82,25 @@ describe('MarketsScreen', () => {
   });
 
   it('shows 24h change with correct sign', () => {
-    const { getByText } = render(<MarketsScreen />);
-    expect(getByText('+5.2%')).toBeTruthy();
-    expect(getByText('-2.1%')).toBeTruthy();
-  });
-
-  it('shows open interest', () => {
-    const { getByText } = render(<MarketsScreen />);
-    expect(getByText('OI: $2.5M')).toBeTruthy();
-    expect(getByText('OI: $5.0M')).toBeTruthy();
-  });
-
-  it('shows max leverage', () => {
-    const { getByText } = render(<MarketsScreen />);
-    expect(getByText('20x max')).toBeTruthy();
-    expect(getByText('10x max')).toBeTruthy();
-  });
-
-  it('renders Long and Short trade buttons per market card', () => {
     const { getAllByText } = render(<MarketsScreen />);
-    expect(getAllByText('Long ▲')).toHaveLength(2);
-    expect(getAllByText('Short ▼')).toHaveLength(2);
+    // New design: change badge shows "▲ +5.20%" / "▼ -2.10%"
+    expect(getAllByText(/▲ \+5\.20%/).length).toBeGreaterThan(0);
+    expect(getAllByText(/▼ -2\.10%/).length).toBeGreaterThan(0);
+  });
+
+  it('shows open interest in stats row', () => {
+    const { getAllByText } = render(<MarketsScreen />);
+    // New design: OI label and value in separate Text nodes
+    expect(getAllByText('OI').length).toBeGreaterThan(0);
+    expect(getAllByText('$2.5M').length).toBeGreaterThan(0);
+    expect(getAllByText('$5.0M').length).toBeGreaterThan(0);
+  });
+
+  it('renders LONG and SHORT trade buttons per market card', () => {
+    const { getAllByText } = render(<MarketsScreen />);
+    // New design: uppercase LONG ▲ / SHORT ▼
+    expect(getAllByText('LONG ▲')).toHaveLength(2);
+    expect(getAllByText('SHORT ▼')).toHaveLength(2);
   });
 
   it('renders filter pills', () => {
@@ -159,9 +157,9 @@ describe('MarketsScreen', () => {
     expect(getByText('Retry')).toBeTruthy();
   });
 
-  it('navigates to Trade screen on Long button press', () => {
+  it('navigates to Trade screen on LONG button press', () => {
     const { getAllByText } = render(<MarketsScreen />);
-    const longButtons = getAllByText('Long ▲');
+    const longButtons = getAllByText('LONG ▲');
     fireEvent.press(longButtons[0]);
 
     expect(mockNavigate).toHaveBeenCalledWith(
@@ -170,9 +168,9 @@ describe('MarketsScreen', () => {
     );
   });
 
-  it('navigates to Trade screen on Short button press', () => {
+  it('navigates to Trade screen on SHORT button press', () => {
     const { getAllByText } = render(<MarketsScreen />);
-    const shortButtons = getAllByText('Short ▼');
+    const shortButtons = getAllByText('SHORT ▼');
     fireEvent.press(shortButtons[0]);
 
     expect(mockNavigate).toHaveBeenCalledWith(

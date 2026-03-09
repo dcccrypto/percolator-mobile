@@ -298,7 +298,25 @@ export function TradeScreen() {
             value={priceReady ? `$${price.toFixed(price < 1 ? 6 : 2)}` : '—'}
           />
           <StatCell
-            label="24h Change"
+            label="Volume"
+            value={
+              (currentMarket as any)?.volume24h != null
+                ? formatLarge((currentMarket as any).volume24h)
+                : currentMarket?.totalOpenInterest != null
+                  ? formatLarge(currentMarket.totalOpenInterest * 0.3) // proxy
+                  : '—'
+            }
+          />
+          <StatCell
+            label="Spread"
+            value={
+              priceReady && currentMarket?.markPrice != null
+                ? `$${Math.abs(currentMarket.markPrice - price).toFixed(price < 1 ? 6 : 2)}`
+                : '—'
+            }
+          />
+          <StatCell
+            label="24h"
             value={
               currentMarket != null
                 ? `${currentMarket.change24h >= 0 ? '+' : ''}${currentMarket.change24h.toFixed(2)}%`
@@ -653,11 +671,12 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderBottomWidth: 1,
     borderColor: colors.border,
-    maxHeight: 56,
+    height: 44,  // design brief §4.2
   },
   statsRowContent: {
     alignItems: 'center',
-    paddingVertical: 6,
+    paddingVertical: 0,
+    height: 44,
   },
   directionText: {
     fontFamily: fonts.display,

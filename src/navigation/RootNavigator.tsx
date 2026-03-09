@@ -1,9 +1,14 @@
 import React, { useState, useCallback, useEffect, lazy, Suspense } from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { Text, ActivityIndicator, View } from 'react-native';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import { Text, ActivityIndicator, View, StyleSheet } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
+import {
+  MarketsTabIcon,
+  TradeTabIcon,
+  PortfolioTabIcon,
+  MoreTabIcon,
+} from '../components/icons/TabIcons';
 
 import { MarketsScreen } from '../screens/MarketsScreen';
 import { TradeScreen } from '../screens/TradeScreen';
@@ -30,21 +35,30 @@ import { usePositionStore } from '../store/positionStore';
 const Tab = createBottomTabNavigator();
 const MoreStack = createNativeStackNavigator();
 
+/** Active indicator pill above icon + icon wrapped in a column */
 function TabIcon({ label, focused }: { label: string; focused: boolean }) {
-  const icons: Record<string, React.ComponentProps<typeof Ionicons>['name']> = {
-    Markets: 'trending-up',
-    Trade: 'bar-chart',
-    Portfolio: 'briefcase',
-    More: 'menu',
-  };
+  let icon: React.ReactNode;
+  switch (label) {
+    case 'Markets': icon = <MarketsTabIcon focused={focused} />; break;
+    case 'Trade':   icon = <TradeTabIcon focused={focused} />;   break;
+    case 'Portfolio': icon = <PortfolioTabIcon focused={focused} />; break;
+    case 'More':    icon = <MoreTabIcon focused={focused} />;    break;
+    default:        icon = null;
+  }
   return (
-    <Ionicons
-      name={icons[label] ?? 'ellipse'}
-      size={22}
-      color={focused ? colors.accent : colors.textMuted}
-    />
+    <View style={tabIconStyles.wrap}>
+      {/* 2px accent pill above icon when focused */}
+      <View style={[tabIconStyles.indicator, focused && tabIconStyles.indicatorActive]} />
+      {icon}
+    </View>
   );
 }
+
+const tabIconStyles = StyleSheet.create({
+  wrap: { alignItems: 'center', gap: 4 },
+  indicator: { width: 24, height: 2, borderRadius: 1, backgroundColor: 'transparent' },
+  indicatorActive: { backgroundColor: colors.accent },
+});
 
 /** Suspense fallback for lazy-loaded screens */
 function ScreenLoader() {

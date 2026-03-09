@@ -25,6 +25,7 @@ const mockUseMarkets = jest.fn(() => ({
   markets: [
     {
       slabAddress: 'slab1',
+      mintAddress: 'So11111111111111111111111111111111111111112',
       symbol: 'SOL-PERP',
       name: 'Solana Perpetual',
       lastPrice: 145.5,
@@ -33,9 +34,11 @@ const mockUseMarkets = jest.fn(() => ({
       maxLeverage: 20,
       tradingFeeBps: 5,
       status: 'active',
+      logoUrl: null,
     },
     {
       slabAddress: 'slab2',
+      mintAddress: '3NZ9JMVBmGAqocybic2c7LQCJScmgsAZ6vQqTDzcqmJh',
       symbol: 'BTC-PERP',
       name: 'Bitcoin Perpetual',
       lastPrice: 98500,
@@ -44,6 +47,7 @@ const mockUseMarkets = jest.fn(() => ({
       maxLeverage: 10,
       tradingFeeBps: 10,
       status: 'active',
+      logoUrl: null,
     },
   ],
   loading: false,

@@ -144,18 +144,20 @@ def generate_adaptive_icon_fg():
     SIZE = 512
     img = Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))
     cx = cy = SIZE // 2
-    font_size = 420  # target ~55% canvas width after square crop
+    # font_size=410 → glyph width ~283px ≈ 55% of 512px canvas (designer spec)
+    font_size = 410
     nx = int(SIZE * 0.03)
 
     glyph_glow = make_italic_glyph("P", font_size, (*ACCENT,), shear=0.22)
-    glyph_glow = glyph_glow.filter(ImageFilter.GaussianBlur(radius=20))
+    glyph_glow = glyph_glow.filter(ImageFilter.GaussianBlur(radius=16))
     img = place_glyph(img, glyph_glow, cx, cy, nudge_x=nx)
     # Tighter glow for vivid accent
     glyph_glow2 = make_italic_glyph("P", font_size, (*ACCENT,), shear=0.22)
-    glyph_glow2 = glyph_glow2.filter(ImageFilter.GaussianBlur(radius=8))
+    glyph_glow2 = glyph_glow2.filter(ImageFilter.GaussianBlur(radius=6))
     img = place_glyph(img, glyph_glow2, cx, cy, nudge_x=nx)
 
-    glyph_white = make_italic_glyph("P", font_size, (*TEXT,), shear=0.22)
+    # Pure #FFFFFF glyph (designer spec: not lavender-grey TEXT)
+    glyph_white = make_italic_glyph("P", font_size, (255, 255, 255), shear=0.22)
     img = place_glyph(img, glyph_white, cx, cy, nudge_x=nx)
 
     out_path = os.path.join(OUT_DIR, "adaptive-icon-foreground.png")

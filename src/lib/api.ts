@@ -203,7 +203,10 @@ export const api = {
   /** Get leaderboard rankings */
   async getLeaderboard(period?: string): Promise<{ traders: LeaderboardEntry[] }> {
     const query = period ? `?period=${period}` : '';
-    return fetchJSON(`${WEB_API_BASE}/leaderboard${query}`);
+    const data = await fetchJSON<Record<string, unknown>>(`${WEB_API_BASE}/leaderboard${query}`);
+    // API may return { leaderboard: [...] } or { traders: [...] }
+    const traders = (data.traders ?? data.leaderboard ?? []) as LeaderboardEntry[];
+    return { traders };
   },
 
   /** Get trader stats for a wallet */
@@ -219,10 +222,9 @@ export const api = {
   /** Get stake pools */
   async getStakePools(): Promise<StakePool[]> {
     const data = await fetchJSON<{ pools: any[] }>(`${WEB_API_BASE}/stake/pools`);
-    return data.pools.map((p) => ({
+    return (data.pools ?? []).map((p) => ({
       ...p,
-      // API returns cooldownSlots; convert to seconds (400ms/slot on Solana)
-      cooldownSeconds: p.cooldownSeconds ?? (p.cooldownSlots ?? 0) * 0.4,
+      cooldownSeconds: p.cooldownSeconds ?? Math.round((p.cooldownSlots ?? 0) * 0.4),
     }));
   },
 };

@@ -217,8 +217,13 @@ function EmptyOrders() {
 
 export function PortfolioScreen() {
   const [tab, setTab] = useState<'open' | 'history' | 'orders'>('open');
-  const { connected, publicKey, connect } = useMWA();
+  const { connected, publicKey, connect, error: mwaError } = useMWA();
   const navigation = useNavigation<any>();
+
+  // Show wallet connection errors to the user (#66)
+  useEffect(() => {
+    if (mwaError) Alert.alert('Wallet Error', mwaError);
+  }, [mwaError]);
   const { submitTrade, submitting } = useTrade();
   const setOpenPositionCount = usePositionStore((s) => s.setOpenPositionCount);
 

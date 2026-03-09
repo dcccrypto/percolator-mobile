@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '../lib/api';
-import * as SecureStore from 'expo-secure-store';
-
-const MARKETS_CACHE_KEY = 'percolator_markets_cache';
+// Module-level cache — survives within app session, no size limit (#67)
+// SecureStore has 2048-byte limit which markets data easily exceeds.
+let _marketsCache: Market[] | null = null;
 
 interface Market {
   slabAddress: string;
@@ -50,21 +50,10 @@ export function useMarkets() {
 
   // Load cached markets on mount for instant first render
   useEffect(() => {
-    SecureStore.getItemAsync(MARKETS_CACHE_KEY)
-      .then((cached) => {
-        if (cached && !cacheLoadedRef.current) {
-          try {
-            const parsed = JSON.parse(cached) as Market[];
-            if (Array.isArray(parsed) && parsed.length > 0) {
-              setMarkets(parsed);
-              cacheLoadedRef.current = true;
-            }
-          } catch {
-            // Invalid cache, ignore
-          }
-        }
-      })
-      .catch(() => {});
+    if (_marketsCache && _marketsCache.length > 0 && !cacheLoadedRef.current) {
+      setMarkets(_marketsCache);
+      cacheLoadedRef.current = true;
+    }
   }, []);
 
   const fetchMarkets = useCallback(async () => {
@@ -74,12 +63,8 @@ export function useMarkets() {
       const mapped = data.map(mapMarket);
       setMarkets(mapped);
 
-      // Persist top markets to cache for next startup (fire and forget).
-      // SecureStore has a 2048-byte limit — only cache top 20 markets by volume.
-      const cacheSlice = [...mapped]
-        .sort((a, b) => (b.volume24h ?? 0) - (a.volume24h ?? 0))
-        .slice(0, 20);
-      SecureStore.setItemAsync(MARKETS_CACHE_KEY, JSON.stringify(cacheSlice)).catch(() => {});
+      // Persist to module-level cache for tab switches
+      _marketsCache = mapped;
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load markets');
     } finally {

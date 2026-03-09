@@ -118,7 +118,7 @@ def generate_app_icon():
                         outline=(*ACCENT, 51), width=1)
 
     # Italic optical nudge: ~3% canvas right to compensate for shear lean
-    nx = int(SIZE * 0.03)
+    nx = int(SIZE * 0.015)
     # Glyph glow (blurred purple P behind white P) — double layer for vivid #9945FF
     font_size = 480
     glyph_glow = make_italic_glyph("P", font_size, (*ACCENT,), shear=0.22)
@@ -146,7 +146,7 @@ def generate_adaptive_icon_fg():
     cx = cy = SIZE // 2
     # font_size=410 → glyph width ~283px ≈ 55% of 512px canvas (designer spec)
     font_size = 410
-    nx = int(SIZE * 0.03)
+    nx = int(SIZE * 0.015)
 
     glyph_glow = make_italic_glyph("P", font_size, (*ACCENT,), shear=0.22)
     glyph_glow = glyph_glow.filter(ImageFilter.GaussianBlur(radius=16))
@@ -185,7 +185,7 @@ def generate_splash():
 
     # P glyph glow
     font_size = 520
-    nx = int(W * 0.03)
+    nx = int(W * 0.015)
     glyph_glow = make_italic_glyph("P", font_size, (*ACCENT,), shear=0.22)
     glyph_glow = glyph_glow.filter(ImageFilter.GaussianBlur(radius=70))
     img = place_glyph(img, glyph_glow, cx, cy, nudge_x=nx)

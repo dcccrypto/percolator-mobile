@@ -207,9 +207,9 @@ function EmptyOrders() {
       <View style={styles.emptyIconWrap}>
         <Text style={styles.emptyIcon}>📋</Text>
       </View>
-      <Text style={styles.emptyTitle}>No open orders</Text>
+      <Text style={styles.emptyTitle}>Limit & Stop orders coming soon</Text>
       <Text style={styles.emptySubtitle}>
-        Limit and stop orders you place will appear here.
+        Market orders are available now via the vAMM. Limit and stop orders are on the roadmap.
       </Text>
     </View>
   );

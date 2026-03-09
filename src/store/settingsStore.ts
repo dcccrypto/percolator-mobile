@@ -20,6 +20,8 @@ interface SettingsStore extends Settings {
   loaded: boolean;
   load: () => Promise<void>;
   update: (partial: Partial<Settings>) => Promise<void>;
+  setNetwork: (network: string) => void;
+  save: () => Promise<void>;
 }
 
 const DEFAULTS: Settings = {
@@ -48,6 +50,29 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     } catch {
       set({ loaded: true });
     }
+  },
+
+  save: async () => {
+    const current = get();
+    const toSave: Settings = {
+      defaultLeverage: current.defaultLeverage,
+      slippageTolerance: current.slippageTolerance,
+      priceAlerts: current.priceAlerts,
+      hapticFeedback: current.hapticFeedback,
+      network: current.network,
+      rpcEndpoint: current.rpcEndpoint,
+      explorer: current.explorer,
+    };
+    try {
+      await SecureStore.setItemAsync(SETTINGS_KEY, JSON.stringify(toSave));
+    } catch {
+      // Best effort
+    }
+  },
+
+  setNetwork: (network: string) => {
+    set({ network: network as Settings['network'] });
+    get().save();
   },
 
   update: async (partial: Partial<Settings>) => {

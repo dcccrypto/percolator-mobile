@@ -16,6 +16,7 @@ interface Market {
   tradingFeeBps: number;
   status: string;
   change24h: number;
+  logoUrl: string | null;
 }
 
 function mapMarket(m: any): Market {
@@ -31,6 +32,7 @@ function mapMarket(m: any): Market {
     tradingFeeBps: m.tradingFeeBps,
     status: m.status,
     change24h: 0,
+    logoUrl: m.logoUrl ?? null,
   };
 }
 

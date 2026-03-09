@@ -28,6 +28,18 @@ const MarketCreationScreen = lazy(() =>
 const CollateralScreen = lazy(() =>
   import('../screens/CollateralScreen').then((m) => ({ default: m.CollateralScreen }))
 );
+const EarnScreen = lazy(() =>
+  import('../screens/EarnScreen').then((m) => ({ default: m.EarnScreen }))
+);
+const DashboardScreen = lazy(() =>
+  import('../screens/DashboardScreen').then((m) => ({ default: m.DashboardScreen }))
+);
+const LeaderboardScreen = lazy(() =>
+  import('../screens/LeaderboardScreen').then((m) => ({ default: m.LeaderboardScreen }))
+);
+const StakeScreen = lazy(() =>
+  import('../screens/StakeScreen').then((m) => ({ default: m.StakeScreen }))
+);
 import { colors } from '../theme/tokens';
 import { fonts } from '../theme/fonts';
 import { usePositionStore } from '../store/positionStore';
@@ -42,6 +54,7 @@ function TabIcon({ label, focused }: { label: string; focused: boolean }) {
     case 'Markets': icon = <MarketsTabIcon focused={focused} />; break;
     case 'Trade':   icon = <TradeTabIcon focused={focused} />;   break;
     case 'Portfolio': icon = <PortfolioTabIcon focused={focused} />; break;
+    case 'Earn':    icon = <Text style={{ fontSize: 20 }}>🌿</Text>;     break;
     case 'More':    icon = <MoreTabIcon focused={focused} />;    break;
     default:        icon = null;
   }
@@ -84,6 +97,10 @@ const LazyPortfolio = withSuspense(PortfolioScreen);
 const LazyFaucet = withSuspense(FaucetScreen);
 const LazyCreateMarket = withSuspense(MarketCreationScreen);
 const LazyCollateral = withSuspense(CollateralScreen);
+const LazyEarn = withSuspense(EarnScreen);
+const LazyDashboard = withSuspense(DashboardScreen);
+const LazyLeaderboard = withSuspense(LeaderboardScreen);
+const LazyStake = withSuspense(StakeScreen);
 
 function MoreNavigator() {
   return (
@@ -97,6 +114,9 @@ function MoreNavigator() {
       <MoreStack.Screen name="Faucet" component={LazyFaucet} />
       <MoreStack.Screen name="CreateMarket" component={LazyCreateMarket} />
       <MoreStack.Screen name="Collateral" component={LazyCollateral} />
+      <MoreStack.Screen name="Dashboard" component={LazyDashboard} />
+      <MoreStack.Screen name="Leaderboard" component={LazyLeaderboard} />
+      <MoreStack.Screen name="Stake" component={LazyStake} />
     </MoreStack.Navigator>
   );
 }
@@ -131,6 +151,7 @@ function MainTabs() {
     >
       <Tab.Screen name="Markets" component={MarketsScreen} />
       <Tab.Screen name="Trade" component={TradeScreen} />
+      <Tab.Screen name="Earn" component={LazyEarn} />
       <Tab.Screen
         name="Portfolio"
         component={LazyPortfolio}

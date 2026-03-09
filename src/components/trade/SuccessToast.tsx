@@ -6,6 +6,9 @@ import React, { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Animated, TouchableOpacity, Linking } from 'react-native';
 import { colors, radii } from '../../theme/tokens';
 import { fonts } from '../../theme/fonts';
+import { getExplorerUrl } from '../../lib/explorer';
+import { useSettingsStore } from '../../store/settingsStore';
+import { CLUSTER } from '../../lib/solana';
 
 interface Props {
   visible: boolean;
@@ -22,6 +25,7 @@ export function SuccessToast({
   durationMs = 4000,
   onDismiss,
 }: Props) {
+  const settings = useSettingsStore();
   const translateY = useRef(new Animated.Value(-100)).current;
 
   useEffect(() => {
@@ -53,10 +57,8 @@ export function SuccessToast({
     ? `${txSignature.slice(0, 8)}…${txSignature.slice(-8)}`
     : null;
 
-  const cluster = process.env.EXPO_PUBLIC_CLUSTER || 'devnet';
-  const clusterParam = cluster === 'mainnet-beta' ? '' : `?cluster=${cluster}`;
   const explorerUrl = txSignature
-    ? `https://solscan.io/tx/${txSignature}${clusterParam}`
+    ? getExplorerUrl(txSignature, settings.explorer, CLUSTER)
     : null;
 
   return (
@@ -67,7 +69,7 @@ export function SuccessToast({
           <Text style={s.message}>{message}</Text>
           {shortSig && explorerUrl && (
             <TouchableOpacity onPress={() => Linking.openURL(explorerUrl)}>
-              <Text style={s.sig}>{shortSig} — View on Solscan ↗</Text>
+              <Text style={s.sig}>{shortSig} — View on {settings.explorer} ↗</Text>
             </TouchableOpacity>
           )}
         </View>

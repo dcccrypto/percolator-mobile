@@ -3,7 +3,7 @@ import { transact } from '@solana-mobile/mobile-wallet-adapter-protocol';
 import { PublicKey } from '@solana/web3.js';
 import * as SecureStore from 'expo-secure-store';
 import { APP_IDENTITY } from '../lib/constants';
-import { CLUSTER } from '../lib/solana';
+import { CLUSTER, connection } from '../lib/solana';
 import { captureException } from '../lib/errorReporting';
 
 const AUTH_TOKEN_KEY = 'mwa_auth_token';
@@ -13,6 +13,7 @@ interface WalletState {
   publicKey: PublicKey | null;
   connecting: boolean;
   error: string | null;
+  balance: number | null;
 }
 
 export function useMWA() {
@@ -21,6 +22,7 @@ export function useMWA() {
     publicKey: null,
     connecting: false,
     error: null,
+    balance: null,
   });
 
   const connect = useCallback(async () => {
@@ -51,7 +53,11 @@ export function useMWA() {
         bytes[i] = binaryStr.charCodeAt(i);
       }
       const pubkey = new PublicKey(bytes);
-      setState({ connected: true, publicKey: pubkey, connecting: false, error: null });
+      // Fetch SOL balance
+      connection.getBalance(pubkey).then((lamports) => {
+        setState((s) => ({ ...s, balance: lamports / 1e9 }));
+      }).catch(() => {});
+      setState({ connected: true, publicKey: pubkey, connecting: false, error: null, balance: null });
       return pubkey;
     } catch (err) {
       // Capture the raw error for remote monitoring BEFORE sanitizing for the user.
@@ -70,15 +76,23 @@ export function useMWA() {
         ? rawMessage
         : 'Failed to connect wallet. Please try again.';
 
-      setState({ connected: false, publicKey: null, connecting: false, error: message });
+      setState({ connected: false, publicKey: null, connecting: false, error: message, balance: null });
       return null;
     }
   }, []);
 
   const disconnect = useCallback(async () => {
     await SecureStore.deleteItemAsync(AUTH_TOKEN_KEY);
-    setState({ connected: false, publicKey: null, connecting: false, error: null });
+    setState({ connected: false, publicKey: null, connecting: false, error: null, balance: null });
   }, []);
+
+  const refreshBalance = useCallback(async () => {
+    if (!state.publicKey) return;
+    try {
+      const lamports = await connection.getBalance(state.publicKey);
+      setState((s) => ({ ...s, balance: lamports / 1e9 }));
+    } catch {}
+  }, [state.publicKey]);
 
   /**
    * Sign and send serialized transactions via MWA.
@@ -122,5 +136,5 @@ export function useMWA() {
     []
   );
 
-  return { ...state, connect, disconnect, signAndSend };
+  return { ...state, connect, disconnect, signAndSend, refreshBalance };
 }

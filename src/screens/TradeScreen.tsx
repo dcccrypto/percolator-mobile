@@ -29,6 +29,7 @@ import { usePriceFlash } from '../hooks/usePriceFlash';
 import { useMarketStore } from '../store/marketStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { useMarkets } from '../hooks/useMarkets';
+import { useTrades } from '../hooks/useTrades';
 
 type TradeRouteParams = {
   Trade: { direction?: 'long' | 'short' } | undefined;
@@ -48,6 +49,7 @@ export function TradeScreen() {
     () => (slabAddress ? markets.find((m) => m.slabAddress === slabAddress) ?? null : null),
     [markets, slabAddress],
   );
+  const { trades, loading: tradesLoading } = useTrades(slabAddress);
   const { prices } = usePriceStreamMulti(slabAddress ? [slabAddress] : []);
   const livePrice = slabAddress ? prices[slabAddress]?.price ?? null : null;
   const { submitting, error: tradeError, submitTrade } = useTrade();
@@ -471,6 +473,24 @@ export function TradeScreen() {
             value={`${(orderSummary.slippagePct * 100).toFixed(1)}%`}
             valueColor={colors.textSecondary}
           />
+        </Panel>
+
+        {/* Recent Trades */}
+        <Panel style={{ gap: 4 }}>
+          <Text style={styles.label}>Recent Trades</Text>
+          {trades.slice(0, 10).map((t, i) => (
+            <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 2 }}>
+              <Text style={{ fontFamily: fonts.mono, fontSize: 11, color: t.side === 'long' ? colors.long : colors.short }}>
+                {t.side === 'long' ? '●' : '●'} ${t.price?.toFixed(2) ?? '—'}
+              </Text>
+              <Text style={{ fontFamily: fonts.mono, fontSize: 11, color: colors.textMuted }}>
+                {t.size?.toFixed(4) ?? '—'}
+              </Text>
+            </View>
+          ))}
+          {trades.length === 0 && !tradesLoading && (
+            <Text style={{ fontFamily: fonts.body, fontSize: 12, color: colors.textMuted, textAlign: 'center' }}>No recent trades</Text>
+          )}
         </Panel>
 
         {/* Wallet not connected hint */}

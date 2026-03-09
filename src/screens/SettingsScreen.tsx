@@ -41,7 +41,7 @@ const EXPLORER_OPTIONS = ['SolanaFM', 'Solscan', 'Solana Explorer'] as const;
 
 export function SettingsScreen() {
   const navigation = useNavigation<any>();
-  const { connected, publicKey, disconnect } = useMWA();
+  const { connected, publicKey, disconnect, balance, refreshBalance } = useMWA();
   const settings = useSettingsStore();
 
   useEffect(() => {
@@ -93,7 +93,14 @@ export function SettingsScreen() {
             {connected && <View style={styles.statusDot} />}
           </View>
           {connected && (
-            <Text style={styles.walletBalance}>Balance: — SOL</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Text style={styles.walletBalance}>
+                Balance: {balance != null ? `${balance.toFixed(4)} SOL` : '—'}
+              </Text>
+              <TouchableOpacity onPress={refreshBalance} activeOpacity={0.7}>
+                <Text style={{ fontSize: 18, color: colors.accent }}>↻</Text>
+              </TouchableOpacity>
+            </View>
           )}
         </Panel>
 
@@ -154,12 +161,49 @@ export function SettingsScreen() {
             hasChevron
             onPress={() => navigation.navigate('CreateMarket')}
           />
+          <SettingsRow
+            label="📊  Dashboard"
+            value="Protocol analytics"
+            hasChevron
+            onPress={() => navigation.navigate('Dashboard')}
+          />
+          <SettingsRow
+            label="🏆  Leaderboard"
+            value="Top traders"
+            hasChevron
+            onPress={() => navigation.navigate('Leaderboard')}
+          />
+          <SettingsRow
+            label="🥩  Stake"
+            value="Stake tokens"
+            hasChevron
+            onPress={() => navigation.navigate('Stake')}
+          />
         </Panel>
 
         {/* Network */}
         <Text style={styles.sectionLabel}>NETWORK</Text>
         <Panel style={styles.section}>
-          <SettingsRow label="Network" value={settings.network === 'devnet' ? 'Devnet' : 'Mainnet'} />
+          <SettingsRow
+            label="Network"
+            value={settings.network === 'devnet' ? 'Devnet' : 'Mainnet'}
+            hasChevron
+            onPress={() => {
+              const target = settings.network === 'devnet' ? 'mainnet-beta' : 'devnet';
+              if (target === 'mainnet-beta') {
+                Alert.alert(
+                  'Switch to Mainnet?',
+                  'You are about to switch to mainnet-beta. Real funds will be at risk. Continue?',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'Switch', style: 'destructive', onPress: () => settings.setNetwork(target) },
+                  ],
+                );
+              } else {
+                settings.setNetwork(target);
+              }
+            }}
+          />
           <SettingsRow label="RPC Endpoint" value={settings.rpcEndpoint} />
           <SettingsRow
             label="Explorer"

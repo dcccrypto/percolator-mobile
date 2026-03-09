@@ -53,6 +53,58 @@ export interface Position {
   pnlPercent: number;
 }
 
+export interface LeaderboardEntry {
+  rank: number;
+  wallet: string;
+  tradeCount: number;
+  volume: number;
+  pnl: number;
+}
+
+export interface TraderStats {
+  totalTrades: number;
+  winRate: number;
+  totalVolume: number;
+  totalPnl: number;
+  avgLeverage: number;
+}
+
+export interface TraderTrade {
+  id: string;
+  market: string;
+  side: 'long' | 'short';
+  size: number;
+  entryPrice: number;
+  pnl: number;
+  timestamp: string;
+  signature?: string;
+}
+
+export interface InsuranceData {
+  currentBalance: number;
+  feeRevenue: number;
+  history: { timestamp: string; balance: number }[];
+}
+
+export interface PlatformStats {
+  totalMarkets: number;
+  volume24h: number;
+  totalOpenInterest: number;
+  uniqueDeployers: number;
+  trades24h: number;
+}
+
+export interface StakePool {
+  id: string;
+  name: string;
+  market: string;
+  tvl: number;
+  apr: number | null;
+  capUsed: number;
+  capMax: number;
+  cooldownSeconds: number;
+}
+
 async function fetchJSON<T>(path: string): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`);
   if (!res.ok) throw new Error(`API ${res.status}: ${res.statusText}`);
@@ -98,6 +150,38 @@ export const api = {
   /** Get funding rate for a market */
   async getFunding(slab: string): Promise<{ rate: number; nextAt: string }> {
     return fetchJSON(`/funding/${slab}`);
+  },
+
+  /** Get leaderboard rankings */
+  async getLeaderboard(period?: string): Promise<{ traders: LeaderboardEntry[] }> {
+    const query = period ? `?period=${period}` : '';
+    return fetchJSON(`/leaderboard${query}`);
+  },
+
+  /** Get trader stats for a wallet */
+  async getTraderStats(wallet: string): Promise<TraderStats> {
+    return fetchJSON(`/trader/${wallet}/stats`);
+  },
+
+  /** Get trade history for a wallet */
+  async getTraderTrades(wallet: string): Promise<{ trades: TraderTrade[] }> {
+    return fetchJSON(`/trader/${wallet}/trades`);
+  },
+
+  /** Get insurance fund data */
+  async getInsurance(slab: string): Promise<InsuranceData> {
+    return fetchJSON(`/insurance/${slab}`);
+  },
+
+  /** Get platform aggregate stats */
+  async getPlatformStats(): Promise<PlatformStats> {
+    return fetchJSON('/stats');
+  },
+
+  /** Get stake pools */
+  async getStakePools(): Promise<StakePool[]> {
+    const data = await fetchJSON<{ pools: StakePool[] }>('/stake/pools');
+    return data.pools;
   },
 
   /** Health check */

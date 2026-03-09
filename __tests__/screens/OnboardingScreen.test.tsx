@@ -25,6 +25,15 @@ jest.mock('../../src/hooks/useMWA', () => ({
   useMWA: () => mockMWAState,
 }));
 
+// Mutable demo store state
+const mockEnterDemo = jest.fn();
+const mockExitDemo = jest.fn();
+
+jest.mock('../../src/store/demoStore', () => ({
+  useDemoStore: (selector: (s: any) => any) =>
+    selector({ isDemoMode: false, enterDemo: mockEnterDemo, exitDemo: mockExitDemo }),
+}));
+
 import { OnboardingScreen } from '../../src/screens/OnboardingScreen';
 
 describe('OnboardingScreen', () => {
@@ -37,6 +46,8 @@ describe('OnboardingScreen', () => {
     mockMWAState.publicKey = null;
     mockMWAState.error = null;
     mockOnComplete.mockReset();
+    mockEnterDemo.mockReset();
+    mockExitDemo.mockReset();
   });
 
   // ── Slide screen ─────────────────────────────────────────────────────────
@@ -53,7 +64,7 @@ describe('OnboardingScreen', () => {
 
   it('renders slide icons', () => {
     const { getByTestId } = render(<OnboardingScreen onComplete={mockOnComplete} />);
-    expect(getByTestId('slide-icon-perps')).toBeTruthy();
+    expect(getByTestId('onboarding-slide-image-1')).toBeTruthy();
   });
 
   // ── CTA progression (section 5.6) ────────────────────────────────────────
@@ -217,5 +228,30 @@ describe('OnboardingScreen', () => {
     );
     await openWalletScreen(getByTestId);
     expect(queryByText(/No compatible wallet|cancelled|timeout/)).toBeNull();
+  });
+
+  // ── Demo mode ─────────────────────────────────────────────────────────────
+
+  it('"Try Demo Mode" is visible on the last slide', async () => {
+    const { getByTestId } = render(<OnboardingScreen onComplete={mockOnComplete} />);
+    // Navigate to last slide (2 x Next)
+    await act(async () => { fireEvent.press(getByTestId('onboarding-next')); });
+    await act(async () => { await new Promise(r => setTimeout(r, 400)); });
+    await act(async () => { fireEvent.press(getByTestId('onboarding-next')); });
+    await act(async () => { await new Promise(r => setTimeout(r, 400)); });
+    expect(getByTestId('onboarding-demo')).toBeTruthy();
+  });
+
+  it('pressing "Try Demo Mode" calls enterDemo and onComplete', async () => {
+    const { getByTestId } = render(<OnboardingScreen onComplete={mockOnComplete} />);
+    // Navigate to last slide
+    await act(async () => { fireEvent.press(getByTestId('onboarding-next')); });
+    await act(async () => { await new Promise(r => setTimeout(r, 400)); });
+    await act(async () => { fireEvent.press(getByTestId('onboarding-next')); });
+    await act(async () => { await new Promise(r => setTimeout(r, 400)); });
+    // Press demo button
+    await act(async () => { fireEvent.press(getByTestId('onboarding-demo')); });
+    expect(mockEnterDemo).toHaveBeenCalledTimes(1);
+    expect(mockOnComplete).toHaveBeenCalledTimes(1);
   });
 });

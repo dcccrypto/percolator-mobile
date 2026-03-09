@@ -97,17 +97,74 @@ jest.mock('@supabase/supabase-js', () => ({
 // --------------------------------------------------------------------------
 // react-native-reanimated mock
 // --------------------------------------------------------------------------
-// react-native-reanimated was removed (not New-Arch compatible + unused).
-// Keep a minimal inline mock so any test that imports it doesn't crash.
-jest.mock('react-native-reanimated', () => ({
-  default: {},
-  useSharedValue: (v) => ({ value: v }),
-  useAnimatedStyle: (fn) => fn(),
-  withTiming: (v) => v,
-  withSpring: (v) => v,
-  createAnimatedComponent: (c) => c,
-  Easing: { linear: (t) => t, ease: (t) => t, bezier: () => (t) => t },
-}));
+jest.mock('react-native-reanimated', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+
+  // Animated namespace with View passthrough
+  const Animated = {
+    View: React.forwardRef((props, ref) =>
+      React.createElement(View, { ...props, ref }),
+    ),
+    Text: React.forwardRef((props, ref) =>
+      React.createElement(require('react-native').Text, { ...props, ref }),
+    ),
+    createAnimatedComponent: (Component) =>
+      React.forwardRef((props, ref) =>
+        React.createElement(Component, { ...props, ref }),
+      ),
+  };
+
+  const identity = (v) => v;
+  const noop = () => {};
+
+  return {
+    __esModule: true,
+    default: Animated,
+    // Hooks
+    useSharedValue: (v) => ({ value: v }),
+    useAnimatedStyle: (fn) => {
+      try { return fn(); } catch (e) {
+        console.error('[reanimated mock] useAnimatedStyle callback threw:', e);
+        return {};
+      }
+    },
+    useDerivedValue: (fn) => ({ value: fn() }),
+    useAnimatedScrollHandler: () => noop,
+    useAnimatedGestureHandler: () => ({}),
+    // Animations
+    withTiming: identity,
+    withSpring: identity,
+    withDelay: (_delay, anim) => anim,
+    withSequence: (...anims) => anims[anims.length - 1],
+    withRepeat: (anim) => anim,
+    cancelAnimation: noop,
+    // Easing — full set used in OnboardingSlide
+    Easing: {
+      linear: identity,
+      ease: identity,
+      quad: identity,
+      cubic: identity,
+      bezier: () => identity,
+      circle: identity,
+      bounce: identity,
+      elastic: () => identity,
+      back: () => identity,
+      in: (fn) => fn,
+      out: (fn) => fn,
+      inOut: (fn) => fn,
+    },
+    // Components
+    createAnimatedComponent: (Component) =>
+      React.forwardRef((props, ref) =>
+        React.createElement(Component, { ...props, ref }),
+      ),
+    Animated,
+    // Misc
+    runOnJS: (fn) => fn,
+    runOnUI: (fn) => fn,
+  };
+});
 
 // --------------------------------------------------------------------------
 // Wallet store mock (zustand — global wallet state)

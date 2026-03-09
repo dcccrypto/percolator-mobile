@@ -11,6 +11,7 @@ import {
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
 import Svg, { Polyline } from 'react-native-svg';
 import { colors, radii } from '../theme/tokens';
 import { fonts } from '../theme/fonts';
@@ -167,12 +168,50 @@ function TradeRow({ trade }: { trade: TraderTrade }) {
 }
 
 function EmptyNotConnected() {
+  let navigation: ReturnType<typeof useNavigation> | null = null;
+  try { navigation = useNavigation(); } catch { /* test env */ }
   return (
     <View style={styles.emptyContainer}>
+      {/* Devnet hero */}
+      <View style={styles.devnetHero}>
+        <Text style={styles.devnetBadge}>🟢 DEVNET LIVE</Text>
+        <Text style={styles.devnetHeroTitle}>Permissionless Perpetual Futures</Text>
+        <Text style={styles.devnetHeroSub}>Trade any token with up to 100× leverage — no permission needed.</Text>
+      </View>
+
+      {/* Quick-start steps */}
+      <View style={styles.quickStart}>
+        <Text style={styles.quickStartTitle}>GET STARTED</Text>
+        <TouchableOpacity style={styles.stepBtn} onPress={() => navigation?.navigate('Faucet' as never)} activeOpacity={0.7}>
+          <Text style={styles.stepNum}>1</Text>
+          <View style={styles.stepContent}>
+            <Text style={styles.stepLabel}>Get Devnet SOL</Text>
+            <Text style={styles.stepDesc}>Free SOL for testing trades</Text>
+          </View>
+          <Text style={styles.stepArrow}>→</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.stepBtn} onPress={() => navigation?.navigate('Markets' as never)} activeOpacity={0.7}>
+          <Text style={styles.stepNum}>2</Text>
+          <View style={styles.stepContent}>
+            <Text style={styles.stepLabel}>Browse Markets</Text>
+            <Text style={styles.stepDesc}>SOL, BTC, ETH and more</Text>
+          </View>
+          <Text style={styles.stepArrow}>→</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.stepBtn} onPress={() => navigation?.navigate('CreateMarket' as never)} activeOpacity={0.7}>
+          <Text style={styles.stepNum}>3</Text>
+          <View style={styles.stepContent}>
+            <Text style={styles.stepLabel}>Create Your Own Market</Text>
+            <Text style={styles.stepDesc}>Launch a market for any token</Text>
+          </View>
+          <Text style={styles.stepArrow}>→</Text>
+        </TouchableOpacity>
+      </View>
+
       <View style={styles.emptyIconWrap}>
         <Text style={styles.emptyIcon}>{'\u{1F512}'}</Text>
       </View>
-      <Text style={styles.emptyTitle}>Connect wallet to view your dashboard</Text>
+      <Text style={styles.emptyTitle}>Connect wallet to start trading</Text>
       <Text style={styles.emptySubtitle}>
         Your trading performance, stats, and trade history will appear here once connected.
       </Text>
@@ -585,5 +624,90 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     textAlign: 'center',
     lineHeight: 20,
+  },
+  // Quick-start / devnet hero
+  devnetHero: {
+    width: '100%',
+    backgroundColor: 'rgba(20, 241, 149, 0.06)',
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(20, 241, 149, 0.15)',
+    padding: 20,
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  devnetBadge: {
+    fontFamily: fonts.mono,
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.cyan,
+    letterSpacing: 2,
+    marginBottom: 8,
+  },
+  devnetHeroTitle: {
+    fontFamily: fonts.display,
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.text,
+    textAlign: 'center',
+    marginBottom: 6,
+  },
+  devnetHeroSub: {
+    fontFamily: fonts.body,
+    fontSize: 13,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 18,
+  },
+  quickStart: {
+    width: '100%',
+    marginBottom: 24,
+    gap: 8,
+  },
+  quickStartTitle: {
+    fontFamily: fonts.display,
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.textMuted,
+    letterSpacing: 2,
+    marginBottom: 4,
+  },
+  stepBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.bgElevated,
+    borderRadius: radii.lg,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: 12,
+  },
+  stepNum: {
+    fontFamily: fonts.mono,
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.accent,
+    width: 28,
+    textAlign: 'center',
+  },
+  stepContent: {
+    flex: 1,
+    gap: 2,
+  },
+  stepLabel: {
+    fontFamily: fonts.display,
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  stepDesc: {
+    fontFamily: fonts.body,
+    fontSize: 12,
+    color: colors.textSecondary,
+  },
+  stepArrow: {
+    fontFamily: fonts.mono,
+    fontSize: 18,
+    color: colors.textMuted,
   },
 });

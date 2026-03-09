@@ -6,7 +6,8 @@
  * - Next.js API: percolatorlaunch.com/api (leaderboard, trader stats, stake pools, market creation)
  */
 
-const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'https://api.percolatorlaunch.com';
+// Railway direct URL — api.percolatorlaunch.com DNS is misconfigured
+const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'https://percolator-api-production.up.railway.app';
 const WEB_API_BASE = process.env.EXPO_PUBLIC_WEB_URL ?? 'https://percolatorlaunch.com/api';
 
 interface MarketData {

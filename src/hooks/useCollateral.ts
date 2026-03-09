@@ -75,7 +75,9 @@ const CFG_INDEX_FEED_ID_OFF = 96;
 const CFG_VAULT_OFF = 128;
 const CFG_COLLATERAL_MINT_OFF = 160;
 
-const ACCOUNTS_SECTION_OFF = 720; // header(72) + config(320) + engine(328)
+// Slab layout offsets (must match percolator-prog compiled constants)
+// HEADER_LEN=104, CONFIG_LEN=512, ENGINE_OFF=624, ACCOUNTS_OFFSET=9424
+const ACCOUNTS_SECTION_OFF = 624 + 9424; // 10048
 const ACCT_SIZE = 256;
 const ACCT_KIND_OFF = 24;
 const ACCT_OWNER_OFF = 184;

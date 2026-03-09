@@ -310,8 +310,21 @@ export function MarketsScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       {error && <ErrorBanner message={error} onRetry={refetch} />}
 
+      {/* Devnet badge */}
+      <View style={styles.devnetBanner}>
+        <Text style={styles.devnetText}>🟢 DEVNET</Text>
+        <Text style={styles.devnetSub}>Permissionless perpetual futures on Solana</Text>
+      </View>
+
       <View style={styles.header}>
         <Text style={styles.title}>Markets</Text>
+        <TouchableOpacity
+          style={styles.createMarketBtn}
+          activeOpacity={0.7}
+          onPress={() => navigation.navigate('CreateMarket' as never)}
+        >
+          <Text style={styles.createMarketText}>+ Create Market</Text>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.searchContainer}>
@@ -395,6 +408,40 @@ export function MarketsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgVoid },
+  devnetBanner: {
+    backgroundColor: 'rgba(20, 241, 149, 0.08)',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(20, 241, 149, 0.15)',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  devnetText: {
+    fontFamily: fonts.mono,
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.cyan,
+    letterSpacing: 1,
+  },
+  devnetSub: {
+    fontFamily: fonts.body,
+    fontSize: 11,
+    color: colors.textSecondary,
+  },
+  createMarketBtn: {
+    backgroundColor: colors.accent,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: radii.md,
+  },
+  createMarketText: {
+    fontFamily: fonts.display,
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.text,
+  },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',

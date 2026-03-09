@@ -22,6 +22,17 @@ import {
 } from '@solana/web3.js';
 import { connection } from '../lib/solana';
 import { useMWA } from './useMWA';
+import {
+  detectLayout,
+  CFG_COLLATERAL_MINT_OFF,
+  CFG_VAULT_OFF,
+  CFG_FEED_ID_OFF,
+  CFG_ORACLE_AUTHORITY_OFF,
+  ACCT_KIND_OFF,
+  ACCT_OWNER_OFF,
+  ACCT_MATCHER_PROG_OFF,
+  ACCT_MATCHER_CTX_OFF,
+} from '../lib/slabLayout';
 
 // ---------------------------------------------------------------------------
 // Instruction tag constants (must match program/src/processor/mod.rs)
@@ -89,31 +100,8 @@ function readPubkey(buf: Uint8Array, off: number): PublicKey {
   return new PublicKey(buf.slice(off, off + 32));
 }
 
-const HEADER_LEN = 72;
-const CONFIG_OFF = HEADER_LEN; // config starts after header
-
-// Config layout offsets (relative to CONFIG_OFF)
-const CFG_PROGRAM_ID_OFF = 0;        // Pubkey (32)
-const CFG_ADMIN_OFF = 32;            // Pubkey (32)
-const CFG_ORACLE_AUTHORITY_OFF = 64; // Pubkey (32)
-const CFG_INDEX_FEED_ID_OFF = 96;    // [u8;32] feed id
-const CFG_VAULT_OFF = 128;           // Pubkey (32)
-const CFG_COLLATERAL_MINT_OFF = 160; // Pubkey (32)
-// CFG total = 320
-
-const ACCT_SIZE = 256;
-const ACCT_MATCHER_PROGRAM_OFF = 120;
-const ACCT_MATCHER_CONTEXT_OFF = 152;
-const ACCT_OWNER_OFF = 184;
-const ACCT_KIND_OFF = 24; // 0=User, 1=LP
-
-// Engine section starts at 392 (header=72 + config=320)
-const ENGINE_OFF = 392;
-
-// Accounts section starts at ENGINE_OFF + 328 (engine size)
-const ACCOUNTS_SECTION_OFF = ENGINE_OFF + 328;
-
 interface SlabConfig {
+  /** Solana program ID — taken from the slab account's owner field */
   programId: PublicKey;
   vault: PublicKey;
   collateralMint: PublicKey;
@@ -128,32 +116,48 @@ interface LPAccount {
   matcherContext: PublicKey;
 }
 
-function parseSlabConfig(data: Uint8Array): SlabConfig {
-  const base = CONFIG_OFF;
-  const programId = readPubkey(data, base + CFG_PROGRAM_ID_OFF);
-  const vault = readPubkey(data, base + CFG_VAULT_OFF);
-  const collateralMint = readPubkey(data, base + CFG_COLLATERAL_MINT_OFF);
-  const oracleAuthority = readPubkey(data, base + CFG_ORACLE_AUTHORITY_OFF);
-  const feedIdBytes = data.slice(base + CFG_INDEX_FEED_ID_OFF, base + CFG_INDEX_FEED_ID_OFF + 32);
-  const feedIdHex = Array.from(feedIdBytes)
+/**
+ * Parse the slab config section.
+ *
+ * Config layout (borsh-packed, no padding) — same for V0 and V1 shared fields:
+ *   +0   collateralMint    Pubkey
+ *   +32  vaultPubkey       Pubkey
+ *   +64  indexFeedId       [u8;32]
+ *   ... (funding / thresh params) ...
+ *   +288 oracleAuthority   Pubkey
+ *
+ * programId is NOT stored in the config; it is the Solana account owner.
+ */
+function parseSlabConfig(data: Uint8Array, programId: PublicKey): SlabConfig {
+  const layout = detectLayout(data.length);
+  const configOff = layout ? layout.headerLen : 72; // V0 headerLen = 72
+
+  const collateralMint = readPubkey(data, configOff + CFG_COLLATERAL_MINT_OFF);
+  const vault = readPubkey(data, configOff + CFG_VAULT_OFF);
+  const oracleAuthority = readPubkey(data, configOff + CFG_ORACLE_AUTHORITY_OFF);
+  const feedStart = configOff + CFG_FEED_ID_OFF;
+  const feedIdHex = Array.from(data.slice(feedStart, feedStart + 32))
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('');
   return { programId, vault, collateralMint, oracleAuthority, feedIdHex };
 }
 
 function findFirstLP(data: Uint8Array): LPAccount | null {
-  let off = ACCOUNTS_SECTION_OFF;
+  const layout = detectLayout(data.length);
+  if (!layout) return null;
+
+  const { accountsOff, accountSize } = layout;
+  let off = accountsOff;
   let idx = 0;
-  while (off + ACCT_SIZE <= data.length) {
+  while (off + accountSize <= data.length) {
     const kind = data[off + ACCT_KIND_OFF];
     if (kind === 1) {
-      // LP account
       const owner = readPubkey(data, off + ACCT_OWNER_OFF);
-      const matcherProgram = readPubkey(data, off + ACCT_MATCHER_PROGRAM_OFF);
-      const matcherContext = readPubkey(data, off + ACCT_MATCHER_CONTEXT_OFF);
+      const matcherProgram = readPubkey(data, off + ACCT_MATCHER_PROG_OFF);
+      const matcherContext = readPubkey(data, off + ACCT_MATCHER_CTX_OFF);
       return { idx, owner, matcherProgram, matcherContext };
     }
-    off += ACCT_SIZE;
+    off += accountSize;
     idx++;
   }
   return null;
@@ -420,7 +424,9 @@ export function useTrade(): UseTradeResult {
         if (!slabInfo) throw new Error('Market not found on-chain');
 
         const data = new Uint8Array(slabInfo.data);
-        const config = parseSlabConfig(data);
+        // programId = the Solana program that owns this account
+        const programId = slabInfo.owner;
+        const config = parseSlabConfig(data, programId);
         const lp = findFirstLP(data);
         if (!lp) throw new Error('No LP account found — market has no liquidity');
 
@@ -440,19 +446,24 @@ export function useTrade(): UseTradeResult {
         let userIdx = params.userIdx;
         let needsInitUser = false;
 
+        // Detect slab layout for correct account scanning
+        const slabLayout = detectLayout(data.length);
+        if (!slabLayout) throw new Error('Unrecognised slab size — market may be corrupted');
+        const { accountsOff, accountSize, maxAccounts } = slabLayout;
+
         // Scan all accounts in the slab to find one owned by this wallet
         let existingIdx = -1;
         {
-          let scanOff = ACCOUNTS_SECTION_OFF;
+          let scanOff = accountsOff;
           let scanIdx = 0;
-          while (scanOff + ACCT_SIZE <= data.length) {
+          while (scanOff + accountSize <= data.length) {
             const acctOwner = readPubkey(data, scanOff + ACCT_OWNER_OFF);
             const acctKind = data[scanOff + ACCT_KIND_OFF];
             if (acctKind === 0 && acctOwner.equals(publicKey)) {
               existingIdx = scanIdx;
               break;
             }
-            scanOff += ACCT_SIZE;
+            scanOff += accountSize;
             scanIdx++;
           }
         }
@@ -462,14 +473,16 @@ export function useTrade(): UseTradeResult {
         } else {
           // User has no account — we need InitUser first
           needsInitUser = true;
-          // Find next empty slot (we'll use the total number of accounts as the new idx)
-          let totalAccounts = 0;
-          let scanOff = ACCOUNTS_SECTION_OFF;
-          while (scanOff + ACCT_SIZE <= data.length) {
-            totalAccounts++;
-            scanOff += ACCT_SIZE;
+          // Count used slots to find the next account index
+          let usedSlots = 0;
+          let scanOff = accountsOff;
+          while (scanOff + accountSize <= data.length && usedSlots < maxAccounts) {
+            const kind = data[scanOff + ACCT_KIND_OFF];
+            // A slot is used if kind is 0 (User) or 1 (LP)
+            if (kind <= 1) usedSlots++;
+            scanOff += accountSize;
           }
-          userIdx = totalAccounts;
+          userIdx = usedSlots;
         }
 
         // 6. Convert size to e6 (signed: positive = long, negative = short)

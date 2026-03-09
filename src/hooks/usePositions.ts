@@ -13,14 +13,20 @@ import { useState, useEffect, useCallback } from 'react';
 import { PublicKey } from '@solana/web3.js';
 import { connection } from '../lib/solana';
 import { api } from '../lib/api';
+import {
+  detectLayout,
+  ACCT_ACCOUNT_ID_OFF,
+  ACCT_CAPITAL_OFF,
+  ACCT_KIND_OFF,
+  ACCT_PNL_OFF,
+  ACCT_POSITION_SIZE_OFF,
+  ACCT_ENTRY_PRICE_OFF,
+  ACCT_OWNER_OFF,
+} from '../lib/slabLayout';
 
 // ---------------------------------------------------------------------------
 // Binary parsing helpers (mirrors packages/core/src/solana/slab.ts)
 // ---------------------------------------------------------------------------
-
-function readU8(buf: Uint8Array, off: number): number {
-  return buf[off];
-}
 
 function readU64LE(buf: Uint8Array, off: number): bigint {
   const dv = new DataView(buf.buffer, buf.byteOffset + off, 8);
@@ -44,31 +50,22 @@ function readPubkey(buf: Uint8Array, off: number): string {
   return new PublicKey(bytes).toBase58();
 }
 
-// Account layout offsets (matches Rust struct)
-const ACCT_SIZE = 256; // each account slot is 256 bytes (incl. padding)
-const ACCT_ACCOUNT_ID_OFF = 0;
-const ACCT_CAPITAL_OFF = 8;
-const ACCT_KIND_OFF = 24;
-const ACCT_PNL_OFF = 32;
-const ACCT_POSITION_SIZE_OFF = 80;
-const ACCT_ENTRY_PRICE_OFF = 96;
-const ACCT_OWNER_OFF = 184;
-
-// Slab header + config start offsets (matches slab.ts ENGINE_OFF = 392)
-const ACCOUNTS_SECTION_OFF = 392 + 328; // header(72) + config(320) + engine(328)
-
 function parseAccounts(
   data: Uint8Array,
   ownerBase58: string,
 ): ParsedAccount[] {
-  const results: ParsedAccount[] = [];
-  let offset = ACCOUNTS_SECTION_OFF;
+  const layout = detectLayout(data.length);
+  if (!layout) return []; // unrecognised slab size — skip silently
 
-  while (offset + ACCT_SIZE <= data.length) {
+  const { accountsOff, accountSize } = layout;
+  const results: ParsedAccount[] = [];
+  let offset = accountsOff;
+
+  while (offset + accountSize <= data.length) {
     try {
-      const kindByte = readU8(data, offset + ACCT_KIND_OFF);
-      // kind 0 = User, kind 1 = LP; skip if invalid
-      if (kindByte > 1) { offset += ACCT_SIZE; continue; }
+      const kindByte = data[offset + ACCT_KIND_OFF];
+      // kind 0 = User, kind 1 = LP; skip if invalid (e.g. uninitialized slot)
+      if (kindByte > 1) { offset += accountSize; continue; }
 
       const owner = readPubkey(data, offset + ACCT_OWNER_OFF);
       if (owner === ownerBase58) {
@@ -86,7 +83,7 @@ function parseAccounts(
     } catch {
       // skip malformed slot
     }
-    offset += ACCT_SIZE;
+    offset += accountSize;
   }
   return results;
 }

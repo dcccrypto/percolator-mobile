@@ -1,5 +1,5 @@
 /**
- * Tests for src/screens/FaucetScreen.tsx
+ * Tests for src/screens/FaucetScreen.tsx (redesigned per HACKATHON-MOBILE-UX-SPECS.md §2)
  */
 import React from 'react';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
@@ -14,16 +14,16 @@ jest.mock('react-native-safe-area-context', () => ({
   },
 }));
 
+// Mock navigation
+jest.mock('@react-navigation/native', () => ({
+  useNavigation: () => ({ goBack: jest.fn(), navigate: jest.fn() }),
+}));
+
 // Mock useMWA — configurable per test
+const mockRefreshBalance = jest.fn();
 const mockUseMWA = jest.fn();
 jest.mock('../../src/hooks/useMWA', () => ({
   useMWA: () => mockUseMWA(),
-}));
-
-// Mock Alert
-const mockAlert = jest.fn();
-jest.mock('react-native/Libraries/Alert/Alert', () => ({
-  alert: (...args: any[]) => mockAlert(...args),
 }));
 
 // Mock solana connection
@@ -44,11 +44,11 @@ describe('FaucetScreen', () => {
     mockUseMWA.mockReturnValue({
       connected: false,
       publicKey: null,
+      balance: null,
       connect: jest.fn(),
       connecting: false,
+      refreshBalance: mockRefreshBalance,
     });
-    mockConnection.requestAirdrop.mockResolvedValue('txsig1234567890123456');
-    mockConnection.confirmTransaction.mockResolvedValue({});
   });
 
   it('renders without crashing', () => {
@@ -56,87 +56,63 @@ describe('FaucetScreen', () => {
     expect(toJSON()).not.toBeNull();
   });
 
-  it('shows Faucet title', () => {
+  it('shows Faucet header', () => {
     const { getAllByText } = render(<FaucetScreen />);
     expect(getAllByText(/Faucet/i).length).toBeGreaterThan(0);
   });
 
-  it('shows SOL and USDC token options', () => {
-    const { getAllByText } = render(<FaucetScreen />);
-    expect(getAllByText('SOL').length).toBeGreaterThan(0);
-    expect(getAllByText('USDC').length).toBeGreaterThan(0);
+  it('shows balance label', () => {
+    const { getByText } = render(<FaucetScreen />);
+    expect(getByText(/YOUR SOL BALANCE/i)).toBeTruthy();
   });
 
-  it('shows a mint/request button', () => {
-    const { getAllByText } = render(<FaucetScreen />);
-    expect(getAllByText(/Airdrop|Mint/i).length).toBeGreaterThan(0);
+  it('shows Devnet badge', () => {
+    const { getByText } = render(<FaucetScreen />);
+    expect(getByText(/Devnet/i)).toBeTruthy();
   });
 
-  it('shows default amount input', () => {
-    const { getByDisplayValue } = render(<FaucetScreen />);
-    expect(getByDisplayValue('1.0')).toBeTruthy();
+  it('shows connect hint when wallet not connected', () => {
+    const { getByText } = render(<FaucetScreen />);
+    expect(getByText(/Connect your wallet/i)).toBeTruthy();
   });
 
-  it('can change amount input', () => {
-    const { getByDisplayValue } = render(<FaucetScreen />);
-    const input = getByDisplayValue('1.0');
-    fireEvent.changeText(input, '2.5');
-    expect(getByDisplayValue('2.5')).toBeTruthy();
+  it('shows MINT TEST TOKENS section', () => {
+    const { getByText } = render(<FaucetScreen />);
+    expect(getByText(/MINT TEST TOKENS/i)).toBeTruthy();
   });
 
-  it('can switch between SOL and USDC tokens', () => {
-    const { getAllByText } = render(<FaucetScreen />);
-    const usdcButtons = getAllByText('USDC');
-    fireEvent.press(usdcButtons[0]);
-    // After pressing USDC, should show Mint Tokens instead of Airdrop SOL
-    expect(getAllByText(/Mint Tokens/i).length).toBeGreaterThan(0);
-  });
-
-  it('disables mint button when wallet not connected', () => {
-    const { getAllByText } = render(<FaucetScreen />);
-    const buttons = getAllByText(/Airdrop|Mint/i);
-    // Button should be disabled (we can verify by pressing — handleMint returns early)
-    fireEvent.press(buttons[0]);
-    // No error should appear since button is disabled via disabled prop
+  it('shows token contract address input label', () => {
+    const { getByText } = render(<FaucetScreen />);
+    expect(getByText(/Token Contract Address/i)).toBeTruthy();
   });
 
   describe('with connected wallet', () => {
     const mockPubkey = new PublicKey('11111111111111111111111111111111');
-    
+
     beforeEach(() => {
       mockUseMWA.mockReturnValue({
         connected: true,
         publicKey: mockPubkey,
+        balance: 5.5,
         connect: jest.fn(),
         connecting: false,
+        refreshBalance: mockRefreshBalance,
       });
     });
 
-    it('enables mint button when wallet is connected', () => {
-      const { getAllByText } = render(<FaucetScreen />);
-      const buttons = getAllByText(/Airdrop SOL/i);
-      expect(buttons.length).toBeGreaterThan(0);
+    it('shows SOL balance value', () => {
+      const { getByText } = render(<FaucetScreen />);
+      expect(getByText(/5\.5/)).toBeTruthy();
     });
 
-    it('shows error for USDC mint', async () => {
-      const { getAllByText, queryByText } = render(<FaucetScreen />);
-      
-      // Switch to USDC
-      const usdcButtons = getAllByText('USDC');
-      fireEvent.press(usdcButtons[0]);
-      
-      // Press mint
-      const mintButtons = getAllByText(/Mint Tokens/i);
-
-      await waitFor(async () => {
-        fireEvent.press(mintButtons[0]);
-      });
-
-      await waitFor(() => {
-        expect(queryByText(/faucet backend/i)).toBeTruthy();
-      }, { timeout: 3000 });
+    it('shows airdrop button', () => {
+      const { getByText } = render(<FaucetScreen />);
+      expect(getByText(/AIRDROP/i)).toBeTruthy();
     });
 
-    // Airdrop failure test removed — connection mock not reliable in RN test env
+    it('shows MINT TOKENS button', () => {
+      const { getByText } = render(<FaucetScreen />);
+      expect(getByText(/MINT TOKENS/i)).toBeTruthy();
+    });
   });
 });

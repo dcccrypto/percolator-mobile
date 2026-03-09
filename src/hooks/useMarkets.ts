@@ -74,8 +74,12 @@ export function useMarkets() {
       const mapped = data.map(mapMarket);
       setMarkets(mapped);
 
-      // Persist to cache for next startup (fire and forget)
-      SecureStore.setItemAsync(MARKETS_CACHE_KEY, JSON.stringify(mapped)).catch(() => {});
+      // Persist top markets to cache for next startup (fire and forget).
+      // SecureStore has a 2048-byte limit — only cache top 20 markets by volume.
+      const cacheSlice = [...mapped]
+        .sort((a, b) => (b.volume24h ?? 0) - (a.volume24h ?? 0))
+        .slice(0, 20);
+      SecureStore.setItemAsync(MARKETS_CACHE_KEY, JSON.stringify(cacheSlice)).catch(() => {});
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load markets');
     } finally {

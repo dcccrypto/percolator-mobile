@@ -183,7 +183,7 @@ export function LeaderboardScreen() {
       setLoading(true);
       setError(null);
       const data = await api.getLeaderboard(period);
-      setTraders(data.traders);
+      setTraders(data.leaderboard ?? data.traders ?? []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load leaderboard');
     } finally {

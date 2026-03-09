@@ -86,11 +86,19 @@ export function MiniChart({
     };
   }, [data, width, height, color]);
 
-  if (loading || !chartData) {
+  if (loading) {
     return (
       <View style={[styles.container, { width, height: Math.max(height, MIN_CHART_HEIGHT) }]}>
         <ActivityIndicator color={colors.accent} size="small" />
         <Text style={styles.loadingText}>Loading chart…</Text>
+      </View>
+    );
+  }
+
+  if (!chartData) {
+    return (
+      <View style={[styles.container, { width, height: Math.max(height, MIN_CHART_HEIGHT) }]}>
+        <Text style={styles.loadingText}>No price data available</Text>
       </View>
     );
   }

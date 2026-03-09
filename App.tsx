@@ -5,6 +5,11 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { RootNavigator } from './src/navigation/RootNavigator';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
 import { colors } from './src/theme/tokens';
+import { initErrorReporting } from './src/lib/errorReporting';
+
+// Initialise remote error reporting as early as possible.
+// No-op when EXPO_PUBLIC_SENTRY_DSN is not set (dev / CI).
+initErrorReporting();
 
 const PercolatorTheme = {
   ...DefaultTheme,

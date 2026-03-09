@@ -8,6 +8,21 @@ import { PublicKey } from '@solana/web3.js';
 const mockTransact = require('@solana-mobile/mobile-wallet-adapter-protocol').transact;
 const mockSecureStore = require('expo-secure-store');
 
+// Mock error reporting to verify captureException is called with raw errors.
+// Note: jest.mock factory is hoisted — cannot reference outer variables here.
+jest.mock('../../src/lib/errorReporting', () => ({
+  captureException: jest.fn(),
+  captureMessage: jest.fn(),
+  initErrorReporting: jest.fn(),
+  _setReporterForTest: jest.fn(),
+}));
+
+// Retrieve the mock reference AFTER the mock is registered
+import * as errorReporting from '../../src/lib/errorReporting';
+const mockCaptureException = errorReporting.captureException as jest.MockedFunction<
+  typeof errorReporting.captureException
+>;
+
 import { useMWA } from '../../src/hooks/useMWA';
 
 describe('useMWA', () => {
@@ -17,6 +32,7 @@ describe('useMWA', () => {
     mockSecureStore.getItemAsync.mockResolvedValue(null);
     mockSecureStore.setItemAsync.mockResolvedValue(undefined);
     mockSecureStore.deleteItemAsync.mockResolvedValue(undefined);
+    mockCaptureException.mockReset();
   });
 
   it('starts disconnected', () => {
@@ -66,7 +82,7 @@ describe('useMWA', () => {
     expect(result.current.connected).toBe(true);
   });
 
-  it('connect() handles errors gracefully', async () => {
+  it('connect() handles errors gracefully with sanitized message', async () => {
     mockTransact.mockImplementationOnce(() => {
       throw new Error('User rejected');
     });
@@ -79,11 +95,31 @@ describe('useMWA', () => {
     });
 
     expect(result.current.connected).toBe(false);
-    expect(result.current.error).toBe('User rejected');
+    // SDK/third-party error messages are collapsed to a generic string.
+    // 'User rejected' is not in USER_CONTROLLED_MESSAGES, so it is sanitized.
+    expect(result.current.error).toBe('Failed to connect wallet. Please try again.');
     expect(result.current.connecting).toBe(false);
   });
 
-  it('connect() handles non-Error throws', async () => {
+  it('connect() calls captureException with raw error before sanitizing (issue #44)', async () => {
+    const rawError = new Error('MWA_INTERNAL_CRASH: unexpected wallet state');
+    mockTransact.mockImplementationOnce(() => {
+      throw rawError;
+    });
+
+    const { result } = renderHook(() => useMWA());
+
+    await act(async () => {
+      await result.current.connect();
+    });
+
+    // Raw error captured for Sentry — never shown to user
+    expect(mockCaptureException).toHaveBeenCalledWith(rawError, { source: 'useMWA.connect' });
+    // UI sees only the generic sanitized message, NOT the raw SDK crash string
+    expect(result.current.error).toBe('Failed to connect wallet. Please try again.');
+  });
+
+  it('connect() calls captureException for non-Error thrown values and sanitizes UI message', async () => {
     mockTransact.mockImplementationOnce(() => {
       throw 'string error';
     });
@@ -94,7 +130,19 @@ describe('useMWA', () => {
       await result.current.connect();
     });
 
-    expect(result.current.error).toBe('Failed to connect wallet');
+    expect(mockCaptureException).toHaveBeenCalledWith('string error', { source: 'useMWA.connect' });
+    expect(result.current.error).toBe('Failed to connect wallet. Please try again.');
+  });
+
+  it('connect() does NOT call captureException on successful connection', async () => {
+    const { result } = renderHook(() => useMWA());
+
+    await act(async () => {
+      await result.current.connect();
+    });
+
+    expect(result.current.connected).toBe(true);
+    expect(mockCaptureException).not.toHaveBeenCalled();
   });
 
   it('disconnect() clears state and deletes auth token', async () => {
@@ -133,6 +181,28 @@ describe('useMWA', () => {
     });
 
     expect(sigs).toEqual(mockSignResult);
+    expect(mockCaptureException).not.toHaveBeenCalled();
+  });
+
+  it('signAndSend() calls captureException and rethrows on transact failure', async () => {
+    const txError = new Error('Transaction rejected by wallet');
+    mockTransact.mockImplementationOnce(() => {
+      throw txError;
+    });
+
+    const { result } = renderHook(() => useMWA());
+
+    await expect(
+      act(async () => {
+        await result.current.signAndSend([new Uint8Array([1, 2, 3])]);
+      }),
+    ).rejects.toThrow('Transaction rejected by wallet');
+
+    expect(mockCaptureException).toHaveBeenCalledWith(txError, {
+      source: 'useMWA.signAndSend',
+      payloadCount: 1,
+      hasStoredToken: false,
+    });
   });
 
   it('connect() sets error when wallet returns null accounts', async () => {

@@ -317,15 +317,29 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
         ))}
       </View>
 
-      {/* CTA */}
-      <TouchableOpacity
-        style={styles.cta}
-        onPress={handleGetStarted}
-        activeOpacity={0.8}
-        testID="onboarding-cta"
-      >
-        <Text style={styles.ctaText}>Get Started →</Text>
-      </TouchableOpacity>
+      {/* CTA — "Next →" on slides 1-2, "Get Started" on last slide (section 5.6) */}
+      {currentSlide < SLIDES.length - 1 ? (
+        <TouchableOpacity
+          style={styles.ctaOutline}
+          onPress={() => {
+            Vibration.vibrate(8);
+            goToSlide(currentSlide + 1, 'right');
+          }}
+          activeOpacity={0.8}
+          testID="onboarding-next"
+        >
+          <Text style={styles.ctaOutlineText}>Next →</Text>
+        </TouchableOpacity>
+      ) : (
+        <TouchableOpacity
+          style={styles.cta}
+          onPress={handleGetStarted}
+          activeOpacity={0.8}
+          testID="onboarding-cta"
+        >
+          <Text style={styles.ctaText}>Get Started</Text>
+        </TouchableOpacity>
+      )}
     </SafeAreaView>
   );
 }
@@ -413,6 +427,22 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: colors.text,
+  },
+  ctaOutline: {
+    height: 52,
+    borderRadius: radii.xl,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginHorizontal: 24,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  ctaOutlineText: {
+    fontFamily: fonts.display,
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.accent,
   },
   // Wallet screen
   backBtn: {

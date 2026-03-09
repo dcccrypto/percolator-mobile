@@ -81,7 +81,14 @@ export function captureMessage(
   }
 }
 
-/** Exposed for testing — allows tests to inject a mock Sentry instance. */
+/**
+ * Exposed for testing — allows tests to inject a mock Sentry instance.
+ * No-op in production builds so test infrastructure never ships as an
+ * active code path.
+ *
+ * @internal — import only in test files
+ */
 export function _setReporterForTest(mock: SentryLike | null): void {
+  if (process.env['NODE_ENV'] === 'production') return;
   _sentry = mock;
 }

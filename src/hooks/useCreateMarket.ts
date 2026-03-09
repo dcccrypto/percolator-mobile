@@ -2,20 +2,10 @@ import { useState, useCallback } from 'react';
 import { Alert } from 'react-native';
 import { useMWA } from './useMWA';
 import { connection } from '../lib/solana';
-import {
-  PublicKey,
-  SystemProgram,
-  Transaction,
-  Keypair,
-} from '@solana/web3.js';
+import { Transaction } from '@solana/web3.js';
 
-const API_BASE =
-  process.env.EXPO_PUBLIC_API_URL ?? 'https://api.percolatorlaunch.com';
-
-// Minimum program config — this would normally come from config
-const PROGRAM_ID = new PublicKey(
-  process.env.EXPO_PUBLIC_PROGRAM_ID ?? '11111111111111111111111111111111',
-);
+const WEB_API_BASE =
+  process.env.EXPO_PUBLIC_WEB_URL ?? 'https://percolatorlaunch.com/api';
 
 interface CreateMarketParams {
   name: string;
@@ -35,20 +25,6 @@ interface CreateMarketState {
   txSignature: string | null;
 }
 
-/**
- * Mobile-friendly market creation hook.
- *
- * The full market creation is a 5-step multi-tx flow (see web app's useCreateMarket).
- * On mobile, we submit a creation request to the API which handles the heavy lifting,
- * or we build and sign the initial CreateAccount tx via MWA.
- *
- * For MVP, we use the API-assisted flow:
- * 1. Validate inputs
- * 2. POST to /api/markets/create with params + wallet pubkey
- * 3. API returns unsigned transactions
- * 4. Sign via MWA
- * 5. API finalizes
- */
 export function useCreateMarket() {
   const { connected, publicKey, signAndSend } = useMWA();
   const [state, setState] = useState<CreateMarketState>({
@@ -68,7 +44,6 @@ export function useCreateMarket() {
         return;
       }
 
-      // Validate inputs
       if (!params.name.trim()) {
         setState((s) => ({ ...s, error: 'Market name is required.' }));
         return;
@@ -90,13 +65,12 @@ export function useCreateMarket() {
       });
 
       try {
-        // Step 1: Request market creation from API
         setState((s) => ({
           ...s,
           step: 'Requesting deployment…',
         }));
 
-        const res = await fetch(`${API_BASE}/markets/create`, {
+        const res = await fetch(`${WEB_API_BASE}/markets`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -104,7 +78,7 @@ export function useCreateMarket() {
             oracle: params.oracle.trim() || undefined,
             max_leverage: params.maxLeverage,
             funding_rate_bps: Math.round(params.fundingRate * 100),
-            insurance_amount: Math.round(params.insurance * 1_000_000), // Convert to lamport-scale (rounded to avoid fractional lamports)
+            insurance_amount: Math.round(params.insurance * 1_000_000),
             maker_fee_bps: Math.round(params.makerFee * 100),
             taker_fee_bps: Math.round(params.takerFee * 100),
             mode: params.mode,
@@ -122,7 +96,6 @@ export function useCreateMarket() {
         const result = await res.json();
 
         if (result.unsigned_txs && Array.isArray(result.unsigned_txs)) {
-          // Step 2: Sign and send transactions via MWA
           setState((s) => ({
             ...s,
             step: 'Sign in your wallet…',
@@ -137,7 +110,6 @@ export function useCreateMarket() {
             return bytes;
           });
 
-          // Step 2a: Simulate transactions before signing to catch errors early
           setState((s) => ({
             ...s,
             step: 'Simulating transaction…',
@@ -154,7 +126,6 @@ export function useCreateMarket() {
             }
           }
 
-          // Step 2b: Sign and send via MWA
           setState((s) => ({
             ...s,
             step: 'Sign in your wallet…',
@@ -164,27 +135,26 @@ export function useCreateMarket() {
 
           setState({
             deploying: false,
-            step: 'Market deployed! 🎉',
+            step: 'Market deployed!',
             error: null,
             txSignature: signatures[0] ?? null,
           });
 
           Alert.alert(
-            '✅ Market Deployed',
+            'Market Deployed',
             `${params.name} has been created on devnet.\n\nTx: ${(signatures[0] ?? '').slice(0, 20)}…`,
             [{ text: 'OK' }],
           );
         } else if (result.slab_address) {
-          // API handled everything (admin-created market)
           setState({
             deploying: false,
-            step: 'Market created! 🎉',
+            step: 'Market created!',
             error: null,
             txSignature: result.tx_signature ?? null,
           });
 
           Alert.alert(
-            '✅ Market Created',
+            'Market Created',
             `${params.name} is live on devnet.`,
             [{ text: 'OK' }],
           );

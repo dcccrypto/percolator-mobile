@@ -1,15 +1,20 @@
 /**
  * Tests for src/hooks/useMWA.ts
+ *
+ * useMWA now delegates connected/publicKey/balance state to the global
+ * walletStore (Zustand). The mock walletStore in jest.setup.js is a plain
+ * object, so mutations don't trigger React re-renders. We test:
+ *   - store methods are called correctly (setConnected, setDisconnected, etc.)
+ *   - local state (connecting, error) updates correctly
+ *   - captureException behavior
  */
 import { renderHook, act } from '@testing-library/react-native';
 import { PublicKey } from '@solana/web3.js';
 
-// The transact mock is set up in jest.setup.js
 const mockTransact = require('@solana-mobile/mobile-wallet-adapter-protocol').transact;
 const mockSecureStore = require('expo-secure-store');
+const { useWalletStore } = require('../../src/store/walletStore');
 
-// Mock error reporting to verify captureException is called with raw errors.
-// Note: jest.mock factory is hoisted — cannot reference outer variables here.
 jest.mock('../../src/lib/errorReporting', () => ({
   captureException: jest.fn(),
   captureMessage: jest.fn(),
@@ -17,7 +22,6 @@ jest.mock('../../src/lib/errorReporting', () => ({
   _setReporterForTest: jest.fn(),
 }));
 
-// Retrieve the mock reference AFTER the mock is registered
 import * as errorReporting from '../../src/lib/errorReporting';
 const mockCaptureException = errorReporting.captureException as jest.MockedFunction<
   typeof errorReporting.captureException
@@ -25,14 +29,24 @@ const mockCaptureException = errorReporting.captureException as jest.MockedFunct
 
 import { useMWA } from '../../src/hooks/useMWA';
 
+function resetWalletStore() {
+  const store = useWalletStore();
+  store.connected = false;
+  store.publicKey = null;
+  store.balance = null;
+  store.setConnected.mockClear();
+  store.setDisconnected.mockClear();
+  store.setBalance.mockClear();
+}
+
 describe('useMWA', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    // Reset secure store
     mockSecureStore.getItemAsync.mockResolvedValue(null);
     mockSecureStore.setItemAsync.mockResolvedValue(undefined);
     mockSecureStore.deleteItemAsync.mockResolvedValue(undefined);
     mockCaptureException.mockReset();
+    resetWalletStore();
   });
 
   it('starts disconnected', () => {
@@ -43,15 +57,16 @@ describe('useMWA', () => {
     expect(result.current.error).toBeNull();
   });
 
-  it('connect() sets connected state with public key', async () => {
+  it('connect() calls setConnected on wallet store with PublicKey', async () => {
     const { result } = renderHook(() => useMWA());
 
     await act(async () => {
-      await result.current.connect();
+      const pubkey = await result.current.connect();
+      expect(pubkey).toBeInstanceOf(PublicKey);
     });
 
-    expect(result.current.connected).toBe(true);
-    expect(result.current.publicKey).toBeInstanceOf(PublicKey);
+    const store = useWalletStore();
+    expect(store.setConnected).toHaveBeenCalledWith(expect.any(PublicKey));
     expect(result.current.connecting).toBe(false);
     expect(result.current.error).toBeNull();
   });
@@ -77,9 +92,9 @@ describe('useMWA', () => {
       await result.current.connect();
     });
 
-    // transact was called, which internally uses the stored token
     expect(mockTransact).toHaveBeenCalled();
-    expect(result.current.connected).toBe(true);
+    const store = useWalletStore();
+    expect(store.setConnected).toHaveBeenCalled();
   });
 
   it('connect() handles errors gracefully with sanitized message', async () => {
@@ -94,11 +109,10 @@ describe('useMWA', () => {
       expect(pubkey).toBeNull();
     });
 
-    expect(result.current.connected).toBe(false);
-    // SDK/third-party error messages are collapsed to a generic string.
-    // 'User rejected' is not in USER_CONTROLLED_MESSAGES, so it is sanitized.
     expect(result.current.error).toBe('Failed to connect wallet. Please try again.');
     expect(result.current.connecting).toBe(false);
+    const store = useWalletStore();
+    expect(store.setDisconnected).toHaveBeenCalled();
   });
 
   it('connect() calls captureException with raw error before sanitizing (issue #44)', async () => {
@@ -113,9 +127,7 @@ describe('useMWA', () => {
       await result.current.connect();
     });
 
-    // Raw error captured for Sentry — never shown to user
     expect(mockCaptureException).toHaveBeenCalledWith(rawError, { source: 'useMWA.connect' });
-    // UI sees only the generic sanitized message, NOT the raw SDK crash string
     expect(result.current.error).toBe('Failed to connect wallet. Please try again.');
   });
 
@@ -141,26 +153,20 @@ describe('useMWA', () => {
       await result.current.connect();
     });
 
-    expect(result.current.connected).toBe(true);
+    const store = useWalletStore();
+    expect(store.setConnected).toHaveBeenCalled();
     expect(mockCaptureException).not.toHaveBeenCalled();
   });
 
-  it('disconnect() clears state and deletes auth token', async () => {
+  it('disconnect() calls setDisconnected on wallet store and deletes auth token', async () => {
     const { result } = renderHook(() => useMWA());
 
-    // Connect first
-    await act(async () => {
-      await result.current.connect();
-    });
-    expect(result.current.connected).toBe(true);
-
-    // Disconnect
     await act(async () => {
       await result.current.disconnect();
     });
 
-    expect(result.current.connected).toBe(false);
-    expect(result.current.publicKey).toBeNull();
+    const store = useWalletStore();
+    expect(store.setDisconnected).toHaveBeenCalled();
     expect(mockSecureStore.deleteItemAsync).toHaveBeenCalledWith('mwa_auth_token');
   });
 
@@ -221,7 +227,6 @@ describe('useMWA', () => {
       expect(pubkey).toBeNull();
     });
 
-    expect(result.current.connected).toBe(false);
     expect(result.current.error).toBe('Wallet returned no accounts. Please try again.');
     expect(result.current.connecting).toBe(false);
   });
@@ -242,7 +247,6 @@ describe('useMWA', () => {
       expect(pubkey).toBeNull();
     });
 
-    expect(result.current.connected).toBe(false);
     expect(result.current.error).toBe('Wallet returned no accounts. Please try again.');
     expect(result.current.connecting).toBe(false);
   });

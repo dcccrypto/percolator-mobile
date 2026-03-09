@@ -3,37 +3,28 @@ import { transact } from '@solana-mobile/mobile-wallet-adapter-protocol';
 import { PublicKey } from '@solana/web3.js';
 import * as SecureStore from 'expo-secure-store';
 import { APP_IDENTITY } from '../lib/constants';
-import { CLUSTER } from '../lib/solana';
+import { CLUSTER, connection } from '../lib/solana';
 import { captureException } from '../lib/errorReporting';
+import { useWalletStore } from '../store/walletStore';
 
 const AUTH_TOKEN_KEY = 'mwa_auth_token';
 
-interface WalletState {
-  connected: boolean;
-  publicKey: PublicKey | null;
-  connecting: boolean;
-  error: string | null;
-}
-
 export function useMWA() {
-  const [state, setState] = useState<WalletState>({
-    connected: false,
-    publicKey: null,
-    connecting: false,
-    error: null,
-  });
+  const wallet = useWalletStore();
+  const [connecting, setConnecting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const connect = useCallback(async () => {
-    setState((s) => ({ ...s, connecting: true, error: null }));
+    setConnecting(true);
+    setError(null);
     try {
-      const result = await transact(async (wallet) => {
+      const result = await transact(async (mwaWallet) => {
         const storedToken = await SecureStore.getItemAsync(AUTH_TOKEN_KEY);
-        const auth = await wallet.authorize({
+        const auth = await mwaWallet.authorize({
           cluster: CLUSTER,
           identity: APP_IDENTITY,
           ...(storedToken ? { auth_token: storedToken } : {}),
         });
-        // Store auth token for re-authorization
         if (auth.auth_token) {
           await SecureStore.setItemAsync(AUTH_TOKEN_KEY, auth.auth_token);
         }
@@ -51,17 +42,20 @@ export function useMWA() {
         bytes[i] = binaryStr.charCodeAt(i);
       }
       const pubkey = new PublicKey(bytes);
-      setState({ connected: true, publicKey: pubkey, connecting: false, error: null });
+
+      // Update global store
+      wallet.setConnected(pubkey);
+      setConnecting(false);
+
+      // Fetch SOL balance async
+      connection.getBalance(pubkey).then((lamports) => {
+        wallet.setBalance(lamports / 1e9);
+      }).catch(() => {});
+
       return pubkey;
     } catch (err) {
-      // Capture the raw error for remote monitoring BEFORE sanitizing for the user.
-      // The UI layer (OnboardingScreen) shows only sanitized messages — raw strings
-      // never reach the user (closes mobile #44, launch #962).
       captureException(err, { source: 'useMWA.connect' });
 
-      // Only pass through error messages we explicitly throw (user-controlled copy).
-      // All SDK/third-party errors are collapsed to a generic string so internal
-      // crash details (e.g. 'MWA_INTERNAL_CRASH: ...') are never surfaced in the UI.
       const USER_CONTROLLED_MESSAGES = new Set([
         'Wallet returned no accounts. Please try again.',
       ]);
@@ -70,15 +64,26 @@ export function useMWA() {
         ? rawMessage
         : 'Failed to connect wallet. Please try again.';
 
-      setState({ connected: false, publicKey: null, connecting: false, error: message });
+      setConnecting(false);
+      setError(message);
+      wallet.setDisconnected();
       return null;
     }
-  }, []);
+  }, [wallet]);
 
   const disconnect = useCallback(async () => {
     await SecureStore.deleteItemAsync(AUTH_TOKEN_KEY);
-    setState({ connected: false, publicKey: null, connecting: false, error: null });
-  }, []);
+    wallet.setDisconnected();
+    setError(null);
+  }, [wallet]);
+
+  const refreshBalance = useCallback(async () => {
+    if (!wallet.publicKey) return;
+    try {
+      const lamports = await connection.getBalance(wallet.publicKey);
+      wallet.setBalance(lamports / 1e9);
+    } catch {}
+  }, [wallet]);
 
   /**
    * Sign and send serialized transactions via MWA.
@@ -89,9 +94,7 @@ export function useMWA() {
     async (serializedTransactions: Uint8Array[]): Promise<{ signatures: string[] }> => {
       const storedToken = await SecureStore.getItemAsync(AUTH_TOKEN_KEY);
 
-      // Convert Uint8Array[] to base64 strings for MWA v2 API
       const payloads = serializedTransactions.map((tx) => {
-        // Use a manual base64 encoder to avoid needing Buffer polyfill
         let binary = '';
         for (let i = 0; i < tx.length; i++) {
           binary += String.fromCharCode(tx[i]);
@@ -100,13 +103,13 @@ export function useMWA() {
       });
 
       try {
-        return await transact(async (wallet) => {
-          await wallet.authorize({
+        return await transact(async (mwaWallet) => {
+          await mwaWallet.authorize({
             cluster: CLUSTER,
             identity: APP_IDENTITY,
             ...(storedToken ? { auth_token: storedToken } : {}),
           });
-          return wallet.signAndSendTransactions({
+          return mwaWallet.signAndSendTransactions({
             payloads,
           });
         });
@@ -122,5 +125,15 @@ export function useMWA() {
     []
   );
 
-  return { ...state, connect, disconnect, signAndSend };
+  return {
+    connected: wallet.connected,
+    publicKey: wallet.publicKey,
+    balance: wallet.balance,
+    connecting,
+    error,
+    connect,
+    disconnect,
+    signAndSend,
+    refreshBalance,
+  };
 }

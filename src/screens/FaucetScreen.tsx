@@ -32,7 +32,7 @@ interface MintRecord {
 }
 
 export function FaucetScreen() {
-  const { connected, publicKey } = useMWA();
+  const { connected, publicKey, balance, refreshBalance } = useMWA();
   const [selectedToken, setSelectedToken] = useState('sol');
   const [amount, setAmount] = useState('1.0');
   const [minting, setMinting] = useState(false);
@@ -75,6 +75,7 @@ export function FaucetScreen() {
         );
 
         Alert.alert('✅ SOL Airdrop', `${amount} SOL sent!\nTx: ${sig.slice(0, 16)}…`);
+        refreshBalance();
       } else {
         // USDC on devnet — there's no universal devnet USDC faucet, so we show a helpful message.
         // In production, this would call a backend faucet endpoint.
@@ -105,7 +106,7 @@ export function FaucetScreen() {
       <Panel style={styles.balancePanel}>
         <Text style={styles.balanceLabel}>Balance</Text>
         <Text style={styles.balanceValue}>
-          {connected ? '—' : 'Connect wallet'}
+          {connected ? (balance != null ? `${balance.toFixed(4)} SOL` : '—') : 'Connect wallet'}
         </Text>
       </Panel>
 

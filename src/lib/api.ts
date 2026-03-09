@@ -1,9 +1,13 @@
 /**
  * Percolator API client for mobile app.
- * Connects to the percolator-launch API (Hono-based).
+ *
+ * Two API surfaces:
+ * - Hono API: api.percolatorlaunch.com (markets, funding, OI, insurance, trades, stats)
+ * - Next.js API: percolatorlaunch.com/api (leaderboard, trader stats, stake pools, market creation)
  */
 
 const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'https://api.percolatorlaunch.com';
+const WEB_API_BASE = process.env.EXPO_PUBLIC_WEB_URL ?? 'https://percolatorlaunch.com/api';
 
 interface MarketData {
   slabAddress: string;
@@ -83,6 +87,7 @@ export interface TraderTrade {
 export interface InsuranceData {
   currentBalance: number;
   feeRevenue: number;
+  totalOpenInterest: number;
   history: { timestamp: string; balance: number }[];
 }
 
@@ -105,51 +110,53 @@ export interface StakePool {
   cooldownSeconds: number;
 }
 
-async function fetchJSON<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`);
+async function fetchJSON<T>(url: string): Promise<T> {
+  const res = await fetch(url);
   if (!res.ok) throw new Error(`API ${res.status}: ${res.statusText}`);
   return res.json();
 }
 
 export const api = {
+  // ── Hono API (api.percolatorlaunch.com) ──
+
   /** List all markets with stats */
   async getMarkets(): Promise<MarketData[]> {
-    const data = await fetchJSON<{ markets: MarketData[] }>('/markets');
+    const data = await fetchJSON<{ markets: MarketData[] }>(`${API_BASE}/markets`);
     return data.markets;
   },
 
   /** Get single market by slab address */
   async getMarket(slab: string): Promise<MarketData> {
-    const data = await fetchJSON<{ market: MarketData }>(`/markets/${slab}`);
+    const data = await fetchJSON<{ market: MarketData }>(`${API_BASE}/markets/${slab}`);
     return data.market;
   },
 
   /** Get latest prices for all markets */
   async getPrices(): Promise<PriceData[]> {
-    const data = await fetchJSON<{ markets: PriceData[] }>('/prices/markets');
+    const data = await fetchJSON<{ markets: PriceData[] }>(`${API_BASE}/prices/markets`);
     return data.markets;
   },
 
   /** Get price history for a market */
   async getPriceHistory(slab: string): Promise<PriceData[]> {
-    const data = await fetchJSON<{ prices: PriceData[] }>(`/prices/${slab}`);
+    const data = await fetchJSON<{ prices: PriceData[] }>(`${API_BASE}/prices/${slab}`);
     return data.prices;
   },
 
   /** Get recent trades for a market */
   async getTrades(slab: string): Promise<TradeData[]> {
-    const data = await fetchJSON<{ trades: TradeData[] }>(`/trades/${slab}`);
+    const data = await fetchJSON<{ trades: TradeData[] }>(`${API_BASE}/markets/${slab}/trades`);
     return data.trades;
   },
 
-  /** Get stats for a market */
+  /** Get market stats */
   async getStats(slab: string): Promise<Record<string, unknown>> {
-    return fetchJSON(`/stats/${slab}`);
+    return fetchJSON(`${API_BASE}/markets/${slab}/stats`);
   },
 
-  /** Get funding rate for a market */
+  /** Get funding rate for a market (includes 24h history) */
   async getFunding(slab: string): Promise<{ rate: number; nextAt: string }> {
-    return fetchJSON(`/funding/${slab}`);
+    return fetchJSON(`${API_BASE}/funding/${slab}`);
   },
 
   /** Get detailed funding rate with 24h history */
@@ -159,7 +166,7 @@ export const api = {
     annualizedPercent: number;
     last24hHistory: { timestamp: string; rate: number }[];
   }> {
-    return fetchJSON(`/funding/${slab}/details`);
+    return fetchJSON(`${API_BASE}/funding/${slab}`);
   },
 
   /** Get open interest data with history */
@@ -167,43 +174,50 @@ export const api = {
     totalOpenInterest: number;
     history: { timestamp: string; totalOi: number }[];
   }> {
-    return fetchJSON(`/oi/${slab}`);
-  },
-
-  /** Get leaderboard rankings */
-  async getLeaderboard(period?: string): Promise<{ traders: LeaderboardEntry[] }> {
-    const query = period ? `?period=${period}` : '';
-    return fetchJSON(`/leaderboard${query}`);
-  },
-
-  /** Get trader stats for a wallet */
-  async getTraderStats(wallet: string): Promise<TraderStats> {
-    return fetchJSON(`/trader/${wallet}/stats`);
-  },
-
-  /** Get trade history for a wallet */
-  async getTraderTrades(wallet: string): Promise<{ trades: TraderTrade[] }> {
-    return fetchJSON(`/trader/${wallet}/trades`);
+    return fetchJSON(`${API_BASE}/open-interest/${slab}`);
   },
 
   /** Get insurance fund data */
   async getInsurance(slab: string): Promise<InsuranceData> {
-    return fetchJSON(`/insurance/${slab}`);
+    return fetchJSON(`${API_BASE}/insurance/${slab}`);
   },
 
   /** Get platform aggregate stats */
   async getPlatformStats(): Promise<PlatformStats> {
-    return fetchJSON('/stats');
+    return fetchJSON(`${API_BASE}/stats`);
   },
 
-  /** Get stake pools */
-  async getStakePools(): Promise<StakePool[]> {
-    const data = await fetchJSON<{ pools: StakePool[] }>('/stake/pools');
-    return data.pools;
+  /** Get 24h volume for a market */
+  async getVolume(slab: string): Promise<{ volume24h: number; tradeCount: number }> {
+    return fetchJSON(`${API_BASE}/markets/${slab}/volume`);
   },
 
   /** Health check */
   async health(): Promise<{ status: string }> {
-    return fetchJSON('/health');
+    return fetchJSON(`${API_BASE}/health`);
+  },
+
+  // ── Next.js API (percolatorlaunch.com/api) ──
+
+  /** Get leaderboard rankings */
+  async getLeaderboard(period?: string): Promise<{ traders: LeaderboardEntry[] }> {
+    const query = period ? `?period=${period}` : '';
+    return fetchJSON(`${WEB_API_BASE}/leaderboard${query}`);
+  },
+
+  /** Get trader stats for a wallet */
+  async getTraderStats(wallet: string): Promise<TraderStats> {
+    return fetchJSON(`${WEB_API_BASE}/trader/${wallet}/stats`);
+  },
+
+  /** Get trade history for a wallet */
+  async getTraderTrades(wallet: string): Promise<{ trades: TraderTrade[] }> {
+    return fetchJSON(`${WEB_API_BASE}/trader/${wallet}/trades`);
+  },
+
+  /** Get stake pools */
+  async getStakePools(): Promise<StakePool[]> {
+    const data = await fetchJSON<{ pools: StakePool[] }>(`${WEB_API_BASE}/stake/pools`);
+    return data.pools;
   },
 };

@@ -110,6 +110,30 @@ jest.mock('react-native-reanimated', () => ({
 }));
 
 // --------------------------------------------------------------------------
+// Wallet store mock (zustand — global wallet state)
+// --------------------------------------------------------------------------
+const mockWalletStore = {
+  connected: false,
+  publicKey: null,
+  balance: null,
+  setConnected: jest.fn((pubkey) => {
+    mockWalletStore.connected = true;
+    mockWalletStore.publicKey = pubkey;
+  }),
+  setDisconnected: jest.fn(() => {
+    mockWalletStore.connected = false;
+    mockWalletStore.publicKey = null;
+    mockWalletStore.balance = null;
+  }),
+  setBalance: jest.fn((bal) => {
+    mockWalletStore.balance = bal;
+  }),
+};
+jest.mock('./src/store/walletStore', () => ({
+  useWalletStore: jest.fn(() => mockWalletStore),
+}));
+
+// --------------------------------------------------------------------------
 // Silence console.warn in tests
 // --------------------------------------------------------------------------
 const originalWarn = console.warn;

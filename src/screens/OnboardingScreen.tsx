@@ -268,8 +268,8 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
             </TouchableOpacity>
           ))}
 
-          <TouchableOpacity style={styles.importLink} activeOpacity={0.7}>
-            <Text style={styles.importText}>Already have an account? Import wallet</Text>
+          <TouchableOpacity style={styles.importLink} activeOpacity={0.7} onPress={handleConnect}>
+            <Text style={styles.importText}>Already have an account? Connect wallet</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>

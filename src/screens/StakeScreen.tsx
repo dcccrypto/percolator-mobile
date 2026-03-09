@@ -8,11 +8,15 @@ import {
   TextInput,
   RefreshControl,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, radii } from '../theme/tokens';
 import { fonts } from '../theme/fonts';
 import { Panel } from '../components/ui/Panel';
+import { ErrorBanner } from '../components/ui/ErrorBanner';
+import { useMWA } from '../hooks/useMWA';
+import { useStake } from '../hooks/useStake';
 import { api, type StakePool } from '../lib/api';
 
 /* ── Helpers ─────────────────────────────────────────────────────── */
@@ -41,7 +45,8 @@ const PoolCard = memo(function PoolCard({ pool }: { pool: StakePool }) {
   const [expanded, setExpanded] = useState(false);
   const [mode, setMode] = useState<'stake' | 'unstake'>('stake');
   const [amount, setAmount] = useState('');
-  const [confirming, setConfirming] = useState(false);
+  const { connected, connect } = useMWA();
+  const { submitting: confirming, error: stakeError, deposit, withdraw } = useStake();
 
   const capPct = pool.capMax > 0 ? Math.min(pool.capUsed / pool.capMax, 1) : 0;
   const capFillColor =
@@ -51,13 +56,25 @@ const PoolCard = memo(function PoolCard({ pool }: { pool: StakePool }) {
 
   const handleConfirm = useCallback(async () => {
     if (!amount || parseFloat(amount) <= 0) return;
-    setConfirming(true);
-    // Placeholder — actual on-chain tx via MWA would go here
-    await new Promise((r) => setTimeout(r, 1500));
-    setConfirming(false);
-    setAmount('');
-    setExpanded(false);
-  }, [amount]);
+    if (!connected) {
+      connect();
+      return;
+    }
+
+    const params = { slabAddress: pool.market, amount: parseFloat(amount) };
+    const sig = mode === 'stake'
+      ? await deposit(params)
+      : await withdraw(params);
+
+    if (sig) {
+      Alert.alert(
+        mode === 'stake' ? 'Staked Successfully' : 'Unstaked Successfully',
+        `Transaction: ${sig.slice(0, 20)}...`,
+      );
+      setAmount('');
+      setExpanded(false);
+    }
+  }, [amount, connected, connect, mode, pool.market, deposit, withdraw]);
 
   return (
     <Panel style={styles.card}>
@@ -187,6 +204,8 @@ const PoolCard = memo(function PoolCard({ pool }: { pool: StakePool }) {
               </TouchableOpacity>
             ))}
           </View>
+
+          {stakeError && <ErrorBanner message={stakeError} />}
 
           {/* Confirm + Cancel */}
           <View style={styles.confirmRow}>

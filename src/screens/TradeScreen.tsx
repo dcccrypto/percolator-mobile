@@ -30,6 +30,9 @@ import { useMarketStore } from '../store/marketStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { useMarkets } from '../hooks/useMarkets';
 import { useTrades } from '../hooks/useTrades';
+import { useFunding } from '../hooks/useFunding';
+import { useOpenInterest } from '../hooks/useOpenInterest';
+import { useInsurance } from '../hooks/useInsurance';
 
 type TradeRouteParams = {
   Trade: { direction?: 'long' | 'short' } | undefined;
@@ -50,6 +53,9 @@ export function TradeScreen() {
     [markets, slabAddress],
   );
   const { trades, loading: tradesLoading } = useTrades(slabAddress);
+  const { hourlyRate, dailyRate } = useFunding(slabAddress);
+  const { totalOI } = useOpenInterest(slabAddress);
+  const { balance: insuranceBalance } = useInsurance(slabAddress);
   const { prices } = usePriceStreamMulti(slabAddress ? [slabAddress] : []);
   const livePrice = slabAddress ? prices[slabAddress]?.price ?? null : null;
   const { submitting, error: tradeError, submitTrade } = useTrade();
@@ -249,27 +255,42 @@ export function TradeScreen() {
           contentContainerStyle={styles.statsRowContent}
         >
           <StatCell
-            label="Funding"
+            label="Funding/h"
             value={
-              currentMarket?.fundingRate != null
-                ? `${(currentMarket.fundingRate * 100).toFixed(4)}%`
-                : '—'
+              hourlyRate != null
+                ? `${hourlyRate.toFixed(4)}%`
+                : currentMarket?.fundingRate != null
+                  ? `${(currentMarket.fundingRate * 100).toFixed(4)}%`
+                  : '—'
             }
             valueColor={
-              currentMarket?.fundingRate != null
-                ? currentMarket.fundingRate >= 0
+              (hourlyRate ?? currentMarket?.fundingRate ?? null) != null
+                ? (hourlyRate ?? (currentMarket?.fundingRate ?? 0) * 100) >= 0
                   ? colors.long
                   : colors.short
                 : undefined
             }
           />
           <StatCell
+            label="Daily Rate"
+            value={dailyRate != null ? `${dailyRate.toFixed(2)}%` : '—'}
+            valueColor={
+              dailyRate != null ? (dailyRate >= 0 ? colors.long : colors.short) : undefined
+            }
+          />
+          <StatCell
             label="OI"
             value={
-              currentMarket?.totalOpenInterest != null
-                ? formatLarge(currentMarket.totalOpenInterest)
-                : '—'
+              totalOI != null
+                ? formatLarge(totalOI)
+                : currentMarket?.totalOpenInterest != null
+                  ? formatLarge(currentMarket.totalOpenInterest)
+                  : '—'
             }
+          />
+          <StatCell
+            label="Insurance"
+            value={insuranceBalance != null ? formatLarge(insuranceBalance) : '—'}
           />
           <StatCell
             label="Mark"

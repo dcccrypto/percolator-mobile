@@ -119,7 +119,7 @@ describe('useMWA', () => {
     expect(result.current.error).toBe('Failed to connect wallet. Please try again.');
   });
 
-  it('connect() calls captureException for non-Error thrown values', async () => {
+  it('connect() calls captureException for non-Error thrown values and sanitizes UI message', async () => {
     mockTransact.mockImplementationOnce(() => {
       throw 'string error';
     });
@@ -131,20 +131,6 @@ describe('useMWA', () => {
     });
 
     expect(mockCaptureException).toHaveBeenCalledWith('string error', { source: 'useMWA.connect' });
-    expect(result.current.error).toBe('Failed to connect wallet. Please try again.');
-  });
-
-  it('connect() handles non-Error throws', async () => {
-    mockTransact.mockImplementationOnce(() => {
-      throw 'string error';
-    });
-
-    const { result } = renderHook(() => useMWA());
-
-    await act(async () => {
-      await result.current.connect();
-    });
-
     expect(result.current.error).toBe('Failed to connect wallet. Please try again.');
   });
 
@@ -195,6 +181,28 @@ describe('useMWA', () => {
     });
 
     expect(sigs).toEqual(mockSignResult);
+    expect(mockCaptureException).not.toHaveBeenCalled();
+  });
+
+  it('signAndSend() calls captureException and rethrows on transact failure', async () => {
+    const txError = new Error('Transaction rejected by wallet');
+    mockTransact.mockImplementationOnce(() => {
+      throw txError;
+    });
+
+    const { result } = renderHook(() => useMWA());
+
+    await expect(
+      act(async () => {
+        await result.current.signAndSend([new Uint8Array([1, 2, 3])]);
+      }),
+    ).rejects.toThrow('Transaction rejected by wallet');
+
+    expect(mockCaptureException).toHaveBeenCalledWith(txError, {
+      source: 'useMWA.signAndSend',
+      payloadCount: 1,
+      hasStoredToken: false,
+    });
   });
 
   it('connect() sets error when wallet returns null accounts', async () => {

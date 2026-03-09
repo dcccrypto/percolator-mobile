@@ -99,16 +99,25 @@ export function useMWA() {
         return btoa(binary);
       });
 
-      return transact(async (wallet) => {
-        await wallet.authorize({
-          cluster: CLUSTER,
-          identity: APP_IDENTITY,
-          ...(storedToken ? { auth_token: storedToken } : {}),
+      try {
+        return await transact(async (wallet) => {
+          await wallet.authorize({
+            cluster: CLUSTER,
+            identity: APP_IDENTITY,
+            ...(storedToken ? { auth_token: storedToken } : {}),
+          });
+          return wallet.signAndSendTransactions({
+            payloads,
+          });
         });
-        return wallet.signAndSendTransactions({
-          payloads,
+      } catch (err) {
+        captureException(err, {
+          source: 'useMWA.signAndSend',
+          payloadCount: payloads.length,
+          hasStoredToken: Boolean(storedToken),
         });
-      });
+        throw err;
+      }
     },
     []
   );

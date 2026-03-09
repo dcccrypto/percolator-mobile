@@ -72,7 +72,7 @@ export function captureMessage(
   context?: Record<string, unknown>,
 ): void {
   if (_sentry) {
-    (_sentry as SentryLike & { captureMessage: (m: string, c?: object) => string }).captureMessage(
+    _sentry.captureMessage(
       message,
       context ? { extra: context } : undefined,
     );

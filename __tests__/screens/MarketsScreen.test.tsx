@@ -17,6 +17,8 @@ jest.mock('react-native-safe-area-context', () => ({
     return <View {...props}>{children}</View>;
   },
   SafeAreaProvider: ({ children }: any) => children,
+  useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
+  useSafeAreaFrame: () => ({ x: 0, y: 0, width: 390, height: 844 }),
 }));
 
 // Mock useMarkets hook

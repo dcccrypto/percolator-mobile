@@ -167,9 +167,13 @@ def generate_adaptive_icon_fg():
     Android safe zone: 66% of 512px = 338px centred → inset 87px on every edge
     (safe zone spans 87–425px on both axes).
 
-    Glyph is scaled so its LARGEST dimension (width or height) fits within
-    ~75% of the safe zone (253px), giving a comfortable margin on all OEM
-    mask shapes (circle, squircle, rounded-rect).
+    For CIRCULAR masks the safe zone is a circle of radius 169px (338/2).
+    Glyph content radius = glyph_max_dim/2 + blur_extend.
+    With blur radius 6, extend ≈ 3×6 = 18px.
+
+    Glyph is scaled so its LARGEST dimension fits within 60% of safe zone
+    (202px → radius 101px + 18px blur = 119px, well within 169px circle).
+    This fixes clipping under circular/squircle masks.
 
     No nudge offsets — glyph is centered at exact canvas centre (256, 256).
     Shear compensation for italic lean is handled by make_italic_glyph's
@@ -178,7 +182,7 @@ def generate_adaptive_icon_fg():
     SIZE = 512
     SAFE_INSET = 87           # Android 66% safe zone inset
     SAFE_SIZE = SIZE - 2 * SAFE_INSET   # 338px
-    MAX_GLYPH_DIM = int(SAFE_SIZE * 0.75)  # 253px — ~50% of canvas, fits all masks
+    MAX_GLYPH_DIM = int(SAFE_SIZE * 0.60)  # 202px — radius 101px, fits circle masks
     img = Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))
     cx = cy = SIZE // 2
 
@@ -210,11 +214,11 @@ def generate_adaptive_icon_fg():
     ny = 0
 
     glyph_glow = make_italic_glyph("P", font_size, (*ACCENT,), shear=0.22)
-    glyph_glow = glyph_glow.filter(ImageFilter.GaussianBlur(radius=12))
+    glyph_glow = glyph_glow.filter(ImageFilter.GaussianBlur(radius=6))  # reduced: 12→6 to stay in safe circle
     img = place_glyph(img, glyph_glow, cx, cy, nudge_x=nx, nudge_y=ny)
     # Tighter inner glow for vivid #9945FF
     glyph_glow2 = make_italic_glyph("P", font_size, (*ACCENT,), shear=0.22)
-    glyph_glow2 = glyph_glow2.filter(ImageFilter.GaussianBlur(radius=4))
+    glyph_glow2 = glyph_glow2.filter(ImageFilter.GaussianBlur(radius=2))  # reduced: 4→2
     img = place_glyph(img, glyph_glow2, cx, cy, nudge_x=nx, nudge_y=ny)
 
     # Pure #FFFFFF glyph (designer spec: not lavender-grey TEXT)
@@ -223,6 +227,22 @@ def generate_adaptive_icon_fg():
 
     out_path = os.path.join(OUT_DIR, "adaptive-icon-foreground.png")
     img.save(out_path, "PNG", optimize=True)
+
+    # Verify all non-transparent pixels are within the 66% safe zone circle (radius 169px)
+    result = img.load()
+    cx_v, cy_v = SIZE // 2, SIZE // 2
+    SAFE_R = (SIZE - 2 * SAFE_INSET) / 2  # 169px
+    violations = 0
+    for py in range(SIZE):
+        for px in range(SIZE):
+            if result[px, py][3] > 10:  # non-transparent pixel
+                dist = ((px - cx_v) ** 2 + (py - cy_v) ** 2) ** 0.5
+                if dist > SAFE_R:
+                    violations += 1
+    if violations > 0:
+        print(f"⚠️  WARNING: {violations} pixels outside safe zone circle (r={SAFE_R:.0f}px) — reduce glyph or blur")
+    else:
+        print(f"✅ Safe zone verified: all pixels within r={SAFE_R:.0f}px circle")
     print(f"✅ adaptive-icon-foreground.png ({SIZE}×{SIZE}) → {out_path}")
 
 

@@ -53,7 +53,7 @@ describe('OnboardingScreen', () => {
 
   it('renders slide icons', () => {
     const { getByTestId } = render(<OnboardingScreen onComplete={mockOnComplete} />);
-    expect(getByTestId('slide-icon-perps')).toBeTruthy();
+    expect(getByTestId('onboarding-slide-image-1')).toBeTruthy();
   });
 
   // ── CTA progression (section 5.6) ────────────────────────────────────────

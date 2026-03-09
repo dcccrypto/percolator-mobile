@@ -8,43 +8,35 @@ import {
   Linking,
   Vibration,
   ActivityIndicator,
-  Image,
   PanResponder,
-  Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, radii } from '../theme/tokens';
 import { fonts } from '../theme/fonts';
 import { useMWA } from '../hooks/useMWA';
+import { useDemoStore } from '../store/demoStore';
+import { OnboardingSlide, OnboardingSlideData } from '../components/onboarding/OnboardingSlide';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 /** Crossfade + slide duration in ms */
 const TRANSITION_MS = 300;
 
-
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const SLIDE_IMAGES = {
-  perps: require('../../assets/onboarding/slide-1-perps.png') as number,
-  onchain: require('../../assets/onboarding/slide-2-onchain.png') as number,
-  deploy: require('../../assets/onboarding/slide-3-deploy.png') as number,
-};
-
-const SLIDES = [
+const SLIDES: OnboardingSlideData[] = [
   {
+    index: 1,
     title: 'Permissionless Perps\non Solana',
     subtitle: 'Trade any asset with leverage. No gatekeepers. No KYC.',
-    image: 'perps' as const,
   },
   {
+    index: 2,
     title: 'Fully On-Chain',
     subtitle: 'Every trade, every position — verifiable on Solana.',
-    image: 'onchain' as const,
   },
   {
+    index: 3,
     title: 'Deploy in 60s',
     subtitle: 'Create your own perpetual market in under a minute.',
-    image: 'deploy' as const,
   },
 ];
 
@@ -66,56 +58,7 @@ interface OnboardingScreenProps {
   onComplete: () => void;
 }
 
-/**
- * Animated carousel slide.
- * On mount, crossfades in from `direction` side over TRANSITION_MS.
- */
-function SlideView({
-  slide,
-  direction,
-}: {
-  slide: (typeof SLIDES)[number];
-  direction: 'left' | 'right' | 'none';
-}) {
-  const opacity = useRef(new Animated.Value(direction === 'none' ? 1 : 0)).current;
-  const translateX = useRef(
-    new Animated.Value(direction === 'right' ? 40 : direction === 'left' ? -40 : 0),
-  ).current;
-
-  React.useEffect(() => {
-    Animated.parallel([
-      Animated.timing(opacity, {
-        toValue: 1,
-        duration: TRANSITION_MS,
-        useNativeDriver: true,
-      }),
-      Animated.timing(translateX, {
-        toValue: 0,
-        duration: TRANSITION_MS,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, []);
-
-  return (
-    <Animated.View
-      style={[
-        styles.slide,
-        { opacity, transform: [{ translateX }] },
-      ]}
-    >
-      <View style={styles.slideImageWrap} testID={`slide-icon-${slide.image}`}>
-        <Image
-          source={SLIDE_IMAGES[slide.image]}
-          style={styles.slideImage}
-          resizeMode="contain"
-        />
-      </View>
-      <Text style={styles.slideTitle}>{slide.title}</Text>
-      <Text style={styles.slideSubtitle}>{slide.subtitle}</Text>
-    </Animated.View>
-  );
-}
+// SlideView is replaced by the OnboardingSlide component (react-native-reanimated).
 
 export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
   const [currentSlide, setCurrentSlide] = useState(0);
@@ -125,6 +68,7 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
   const [connectStep, setConnectStep] = useState<ConnectStep>(null);
   const [connectError, setConnectError] = useState<string | null>(null);
   const { connect, error: mwaError } = useMWA();
+  const enterDemo = useDemoStore((s) => s.enterDemo);
 
   const isTransitioning = useRef(false);
 
@@ -268,8 +212,15 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
             </TouchableOpacity>
           ))}
 
-          <TouchableOpacity style={styles.importLink} activeOpacity={0.7}>
-            <Text style={styles.importText}>Already have an account? Import wallet</Text>
+          <TouchableOpacity
+            style={styles.importLink}
+            activeOpacity={0.7}
+            onPress={handleConnect}
+            disabled={connectStep !== null}
+          >
+            <Text style={styles.importLinkText}>
+              Already have an account? <Text style={styles.importLinkAccent}>Connect wallet</Text>
+            </Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -292,10 +243,12 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
 
       {/* Animated carousel area — swipe left/right to navigate */}
       <View style={styles.carouselArea} {...panResponder.panHandlers}>
-        <SlideView
+        <OnboardingSlide
           key={slideKey}
           slide={SLIDES[currentSlide]}
           direction={slideDirection}
+          durationMs={TRANSITION_MS}
+          screenWidth={SCREEN_WIDTH}
         />
       </View>
 
@@ -331,14 +284,28 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
           <Text style={styles.ctaOutlineText}>Next →</Text>
         </TouchableOpacity>
       ) : (
-        <TouchableOpacity
-          style={styles.cta}
-          onPress={handleGetStarted}
-          activeOpacity={0.8}
-          testID="onboarding-cta"
-        >
-          <Text style={styles.ctaText}>Get Started</Text>
-        </TouchableOpacity>
+        <View style={styles.ctaGroup}>
+          <TouchableOpacity
+            style={styles.cta}
+            onPress={handleGetStarted}
+            activeOpacity={0.8}
+            testID="onboarding-cta"
+          >
+            <Text style={styles.ctaText}>Get Started</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.demoBtn}
+            onPress={() => {
+              Vibration.vibrate(10);
+              enterDemo();
+              onComplete();
+            }}
+            activeOpacity={0.8}
+            testID="onboarding-demo"
+          >
+            <Text style={styles.demoBtnText}>Try Demo Mode</Text>
+          </TouchableOpacity>
+        </View>
       )}
     </SafeAreaView>
   );
@@ -368,35 +335,6 @@ const styles = StyleSheet.create({
     flex: 1,
     overflow: 'hidden',
   },
-  slide: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 40,
-  },
-  slideImageWrap: {
-    marginBottom: 24,
-    alignItems: 'center' as const,
-  },
-  slideImage: {
-    width: SCREEN_WIDTH * 0.7,
-    height: SCREEN_WIDTH * 0.7,
-  },
-  slideTitle: {
-    fontFamily: fonts.display,
-    fontSize: 24,
-    fontWeight: '700',
-    color: colors.text,
-    textAlign: 'center',
-    marginBottom: 12,
-  },
-  slideSubtitle: {
-    fontFamily: fonts.body,
-    fontSize: 14,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    lineHeight: 20,
-  },
   pagination: {
     flexDirection: 'row',
     justifyContent: 'center',
@@ -419,8 +357,6 @@ const styles = StyleSheet.create({
     borderRadius: radii.xl,
     justifyContent: 'center',
     alignItems: 'center',
-    marginHorizontal: 24,
-    marginBottom: 24,
   },
   ctaText: {
     fontFamily: fonts.display,
@@ -534,10 +470,35 @@ const styles = StyleSheet.create({
   importLink: {
     marginTop: 24,
     alignItems: 'center',
+    paddingVertical: 8,
   },
-  importText: {
+  importLinkText: {
     fontFamily: fonts.body,
     fontSize: 13,
+    color: colors.textSecondary,
+  },
+  importLinkAccent: {
+    color: colors.accent,
+    fontWeight: '600',
+  },
+  ctaGroup: {
+    gap: 8,
+    marginHorizontal: 24,
+    marginBottom: 24,
+  },
+  demoBtn: {
+    height: 48,
+    borderRadius: radii.xl,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderStyle: 'dashed' as any,
+  },
+  demoBtnText: {
+    fontFamily: fonts.display,
+    fontSize: 14,
+    fontWeight: '600',
     color: colors.textSecondary,
   },
   errorRow: {

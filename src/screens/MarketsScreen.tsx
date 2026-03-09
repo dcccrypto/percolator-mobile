@@ -21,6 +21,7 @@ import { MarketCardSkeleton } from '../components/ui/SkeletonLoader';
 import { ErrorBanner } from '../components/ui/ErrorBanner';
 import { useMarkets } from '../hooks/useMarkets';
 import { useMarketStore } from '../store/marketStore';
+import { CreateMarketFAB } from '../components/trade/CreateMarketFAB';
 
 const FILTERS = ['Hot 🔥', 'Newest', 'Volume ↓', 'OI ↓', 'Top Gainers'];
 
@@ -402,6 +403,9 @@ export function MarketsScreen() {
           }
         />
       )}
+
+      {/* Create Market FAB — fixed bottom-right, navigates to wizard */}
+      <CreateMarketFAB />
     </SafeAreaView>
   );
 }

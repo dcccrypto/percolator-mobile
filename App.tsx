@@ -4,6 +4,7 @@ import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { RootNavigator } from './src/navigation/RootNavigator';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
+import { DevnetBanner } from './src/components/common/DevnetBanner';
 import { colors } from './src/theme/tokens';
 import { initErrorReporting } from './src/lib/errorReporting';
 
@@ -31,6 +32,7 @@ export default function App() {
       <SafeAreaProvider>
         <NavigationContainer theme={PercolatorTheme}>
           <StatusBar style="light" />
+          <DevnetBanner />
           <RootNavigator />
         </NavigationContainer>
       </SafeAreaProvider>

@@ -22,6 +22,7 @@ import {
 } from '@solana/web3.js';
 import { connection } from '../lib/solana';
 import { useMWA } from './useMWA';
+import { captureException } from '../lib/sentry';
 
 // ---------------------------------------------------------------------------
 // Instruction tag constants (must match program/src/processor/mod.rs)
@@ -535,6 +536,12 @@ export function useTrade(): UseTradeResult {
         return { signature: results.signatures[0] };
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Transaction failed';
+        captureException(err, {
+          hook: 'useTrade.submitTrade',
+          slabAddress: params.slabAddress,
+          direction: params.direction,
+          sizeUsd: params.sizeUsd,
+        });
         setError(msg);
         return null;
       } finally {

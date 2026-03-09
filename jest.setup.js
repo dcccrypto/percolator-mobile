@@ -125,6 +125,16 @@ console.warn = (...args) => {
 };
 
 // --------------------------------------------------------------------------
+// @sentry/react-native mock (package may not be installed in CI)
+// --------------------------------------------------------------------------
+jest.mock('@sentry/react-native', () => ({
+  init: jest.fn(),
+  captureException: jest.fn(),
+  withScope: jest.fn((cb) => cb({ setExtra: jest.fn() })),
+  wrap: (component) => component,
+}), { virtual: true });
+
+// --------------------------------------------------------------------------
 // Global __DEV__ flag (normally set by Metro)
 // --------------------------------------------------------------------------
 global.__DEV__ = true;

@@ -4,6 +4,7 @@ import { PublicKey } from '@solana/web3.js';
 import * as SecureStore from 'expo-secure-store';
 import { APP_IDENTITY } from '../lib/constants';
 import { CLUSTER } from '../lib/solana';
+import { captureException } from '../lib/sentry';
 
 const AUTH_TOKEN_KEY = 'mwa_auth_token';
 
@@ -54,6 +55,7 @@ export function useMWA() {
       return pubkey;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to connect wallet';
+      captureException(err, { hook: 'useMWA.connect', cluster: CLUSTER });
       setState({ connected: false, publicKey: null, connecting: false, error: message });
       return null;
     }
@@ -83,16 +85,25 @@ export function useMWA() {
         return btoa(binary);
       });
 
-      return transact(async (wallet) => {
-        await wallet.authorize({
+      try {
+        return await transact(async (wallet) => {
+          await wallet.authorize({
+            cluster: CLUSTER,
+            identity: APP_IDENTITY,
+            ...(storedToken ? { auth_token: storedToken } : {}),
+          });
+          return wallet.signAndSendTransactions({
+            payloads,
+          });
+        });
+      } catch (err) {
+        captureException(err, {
+          hook: 'useMWA.signAndSend',
           cluster: CLUSTER,
-          identity: APP_IDENTITY,
-          ...(storedToken ? { auth_token: storedToken } : {}),
+          txCount: serializedTransactions.length,
         });
-        return wallet.signAndSendTransactions({
-          payloads,
-        });
-      });
+        throw err; // re-throw so callers (useTrade) still receive the error
+      }
     },
     []
   );

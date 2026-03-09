@@ -8,11 +8,19 @@ import { PublicKey } from '@solana/web3.js';
 const mockTransact = require('@solana-mobile/mobile-wallet-adapter-protocol').transact;
 const mockSecureStore = require('expo-secure-store');
 
+// Mock sentry so we can assert captureException calls
+const mockCaptureException = jest.fn();
+jest.mock('../../src/lib/sentry', () => ({
+  captureException: (...args: unknown[]) => mockCaptureException(...args),
+  initSentry: jest.fn(),
+}));
+
 import { useMWA } from '../../src/hooks/useMWA';
 
 describe('useMWA', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockCaptureException.mockClear();
     // Reset secure store
     mockSecureStore.getItemAsync.mockResolvedValue(null);
     mockSecureStore.setItemAsync.mockResolvedValue(undefined);
@@ -81,6 +89,10 @@ describe('useMWA', () => {
     expect(result.current.connected).toBe(false);
     expect(result.current.error).toBe('User rejected');
     expect(result.current.connecting).toBe(false);
+    expect(mockCaptureException).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({ hook: 'useMWA.connect' }),
+    );
   });
 
   it('connect() handles non-Error throws', async () => {

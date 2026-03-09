@@ -89,30 +89,19 @@ function readPubkey(buf: Uint8Array, off: number): PublicKey {
   return new PublicKey(buf.slice(off, off + 32));
 }
 
-const HEADER_LEN = 72;
-const CONFIG_OFF = HEADER_LEN; // config starts after header
-
-// Config layout offsets (relative to CONFIG_OFF)
-const CFG_PROGRAM_ID_OFF = 0;        // Pubkey (32)
-const CFG_ADMIN_OFF = 32;            // Pubkey (32)
-const CFG_ORACLE_AUTHORITY_OFF = 64; // Pubkey (32)
-const CFG_INDEX_FEED_ID_OFF = 96;    // [u8;32] feed id
-const CFG_VAULT_OFF = 128;           // Pubkey (32)
-const CFG_COLLATERAL_MINT_OFF = 160; // Pubkey (32)
-// CFG total = 320
-
-const ACCT_SIZE = 256;
-const ACCT_MATCHER_PROGRAM_OFF = 120;
-const ACCT_MATCHER_CONTEXT_OFF = 152;
-const ACCT_OWNER_OFF = 184;
-const ACCT_KIND_OFF = 24; // 0=User, 1=LP
-
-// Slab layout offsets (must match percolator-prog compiled constants)
-// HEADER_LEN=104, CONFIG_LEN=512, ENGINE_OFF=624, ACCOUNTS_OFFSET=9424
-const ENGINE_OFF = 624;
-
-// ACCOUNTS_SECTION_OFF = ENGINE_OFF + offset_of!(RiskEngine, accounts)
-const ACCOUNTS_SECTION_OFF = ENGINE_OFF + 9424; // 10048
+import {
+  detectSlabLayout,
+  CFG_PROGRAM_ID_OFF,
+  CFG_ORACLE_AUTHORITY_OFF,
+  CFG_INDEX_FEED_ID_OFF,
+  CFG_VAULT_OFF,
+  CFG_COLLATERAL_MINT_OFF,
+  ACCT_MATCHER_PROGRAM_OFF,
+  ACCT_MATCHER_CONTEXT_OFF,
+  ACCT_OWNER_OFF,
+  ACCT_KIND_OFF,
+  type SlabLayout,
+} from '../lib/slabLayout';
 
 interface SlabConfig {
   programId: PublicKey;
@@ -129,8 +118,8 @@ interface LPAccount {
   matcherContext: PublicKey;
 }
 
-function parseSlabConfig(data: Uint8Array): SlabConfig {
-  const base = CONFIG_OFF;
+function parseSlabConfig(data: Uint8Array, layout: SlabLayout): SlabConfig {
+  const base = layout.configOff;
   const programId = readPubkey(data, base + CFG_PROGRAM_ID_OFF);
   const vault = readPubkey(data, base + CFG_VAULT_OFF);
   const collateralMint = readPubkey(data, base + CFG_COLLATERAL_MINT_OFF);
@@ -142,19 +131,18 @@ function parseSlabConfig(data: Uint8Array): SlabConfig {
   return { programId, vault, collateralMint, oracleAuthority, feedIdHex };
 }
 
-function findFirstLP(data: Uint8Array): LPAccount | null {
-  let off = ACCOUNTS_SECTION_OFF;
+function findFirstLP(data: Uint8Array, layout: SlabLayout): LPAccount | null {
+  let off = layout.accountsOff;
   let idx = 0;
-  while (off + ACCT_SIZE <= data.length) {
+  while (off + layout.acctSize <= data.length) {
     const kind = data[off + ACCT_KIND_OFF];
     if (kind === 1) {
-      // LP account
       const owner = readPubkey(data, off + ACCT_OWNER_OFF);
       const matcherProgram = readPubkey(data, off + ACCT_MATCHER_PROGRAM_OFF);
       const matcherContext = readPubkey(data, off + ACCT_MATCHER_CONTEXT_OFF);
       return { idx, owner, matcherProgram, matcherContext };
     }
-    off += ACCT_SIZE;
+    off += layout.acctSize;
     idx++;
   }
   return null;
@@ -421,8 +409,10 @@ export function useTrade(): UseTradeResult {
         if (!slabInfo) throw new Error('Market not found on-chain');
 
         const data = new Uint8Array(slabInfo.data);
-        const config = parseSlabConfig(data);
-        const lp = findFirstLP(data);
+        const layout = detectSlabLayout(data);
+        if (!layout) throw new Error('Unrecognised slab layout — cannot parse market data');
+        const config = parseSlabConfig(data, layout);
+        const lp = findFirstLP(data, layout);
         if (!lp) throw new Error('No LP account found — market has no liquidity');
 
         // 2. Determine oracle account
@@ -444,16 +434,16 @@ export function useTrade(): UseTradeResult {
         // Scan all accounts in the slab to find one owned by this wallet
         let existingIdx = -1;
         {
-          let scanOff = ACCOUNTS_SECTION_OFF;
+          let scanOff = layout.accountsOff;
           let scanIdx = 0;
-          while (scanOff + ACCT_SIZE <= data.length) {
+          while (scanOff + layout.acctSize <= data.length) {
             const acctOwner = readPubkey(data, scanOff + ACCT_OWNER_OFF);
             const acctKind = data[scanOff + ACCT_KIND_OFF];
             if (acctKind === 0 && acctOwner.equals(publicKey)) {
               existingIdx = scanIdx;
               break;
             }
-            scanOff += ACCT_SIZE;
+            scanOff += layout.acctSize;
             scanIdx++;
           }
         }
@@ -465,10 +455,10 @@ export function useTrade(): UseTradeResult {
           needsInitUser = true;
           // Find next empty slot (we'll use the total number of accounts as the new idx)
           let totalAccounts = 0;
-          let scanOff = ACCOUNTS_SECTION_OFF;
-          while (scanOff + ACCT_SIZE <= data.length) {
+          let scanOff = layout.accountsOff;
+          while (scanOff + layout.acctSize <= data.length) {
             totalAccounts++;
-            scanOff += ACCT_SIZE;
+            scanOff += layout.acctSize;
           }
           userIdx = totalAccounts;
         }

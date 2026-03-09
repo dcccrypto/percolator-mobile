@@ -7,7 +7,9 @@ import {
   FlatList,
   TouchableOpacity,
   RefreshControl,
+  Image,
 } from 'react-native';
+import Svg, { Path } from 'react-native-svg';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { colors, radii } from '../theme/tokens';
@@ -36,9 +38,48 @@ function formatVolume(oi: number | null): string {
   return `$${oi.toFixed(0)}`;
 }
 
+/** Hot thresholds from design brief §3.2 */
+const HOT_OI_PCT = 0.80;   // OI > 80% capacity
+const HOT_VOL_USD = 1_000_000; // 24h vol > $1 M
+
+function FlameIcon({ size = 14 }: { size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M12 2C12 2 9 6.5 9 9.5C9 9.5 7 8.5 7.5 6.5C5 9 4 11.5 4 14C4 18.4 7.6 22 12 22C16.4 22 20 18.4 20 14C20 10 17 6 12 2ZM12 19C10.3 19 9 17.7 9 16C9 14.4 10 13.2 11.5 12.5C11.5 13.5 12 14.5 13 15C13 13.5 13.8 12.2 15 11.5C15 13.7 14 19 12 19Z"
+        fill={colors.warning}
+      />
+    </Svg>
+  );
+}
+
+/** Derive token logo URL from symbol, e.g. "SOL-PERP" → Coingecko fallback */
+function getLogoUrl(symbol: string): string | null {
+  const base = symbol.replace(/-PERP$/i, '').toUpperCase();
+  const slugMap: Record<string, string> = {
+    SOL: 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png',
+    BTC: 'https://assets.coingecko.com/coins/images/1/thumb/bitcoin.png',
+    ETH: 'https://assets.coingecko.com/coins/images/279/thumb/ethereum.png',
+    JUP: 'https://assets.coingecko.com/coins/images/34188/thumb/jup.png',
+    WIF: 'https://assets.coingecko.com/coins/images/33566/thumb/dogwifhat.png',
+    BONK: 'https://assets.coingecko.com/coins/images/28600/thumb/bonk.jpg',
+  };
+  return slugMap[base] ?? null;
+}
+
 // Fixed card height for getItemLayout (card ~184px + 8px gap)
 const CARD_HEIGHT = 192;
 
+/**
+ * Market card — design brief §3.2.
+ *
+ * Layout:
+ *   [Logo 36px]  Symbol      Price
+ *                Name   ▲ +2.41% [badge]
+ *   ─── divider ──────────────────────────
+ *   Vol $4.2M   OI $18.5M   OI bar ████░ 62%
+ *                [LONG ▲]  [SHORT ▼]
+ */
 const MarketCard = memo(function MarketCard({
   market,
   onTrade,
@@ -46,15 +87,20 @@ const MarketCard = memo(function MarketCard({
   market: {
     slabAddress: string;
     symbol: string;
+    name?: string;
     lastPrice: number | null;
     change24h: number;
     totalOpenInterest: number | null;
     maxLeverage: number;
+    volume24h?: number | null;
   };
   onTrade: (slabAddress: string, symbol: string, direction?: 'long' | 'short') => void;
 }) {
-  const changeColor = market.change24h >= 0 ? colors.long : colors.short;
-  const changePrefix = market.change24h >= 0 ? '+' : '';
+  const changePositive = market.change24h >= 0;
+  const changeColor = changePositive ? colors.long : colors.short;
+  const changeBg = changePositive ? colors.longSubtle : colors.shortSubtle;
+  const changePrefix = changePositive ? '+' : '';
+
   const maxOi = (market as any).maxOpenInterest ?? 5_000_000;
   const oiPct = Math.min((market.totalOpenInterest ?? 0) / maxOi, 1);
   const oiFillColor =
@@ -62,46 +108,87 @@ const MarketCard = memo(function MarketCard({
     oiPct < 0.8 ? colors.warning :
     colors.short;
 
+  // Hot indicator: OI > 80% capacity OR 24h vol > $1M
+  const vol24h = market.volume24h ?? (market.totalOpenInterest ?? 0) * 0.3; // proxy if unavailable
+  const isHot = oiPct >= HOT_OI_PCT || vol24h >= HOT_VOL_USD;
+
+  const logoUrl = getLogoUrl(market.symbol);
+  const baseName = market.name ?? market.symbol.replace(/-PERP$/i, '') + ' Perp';
+
   return (
     <Panel style={styles.card}>
+      {/* Header row: logo + text + price */}
       <View style={styles.cardHeader}>
-        <Text style={styles.marketName}>{market.symbol}</Text>
-        <Text style={styles.marketPrice}>{formatPrice(market.lastPrice)}</Text>
-      </View>
-
-      <View style={styles.cardMeta}>
-        <View style={[styles.changePill, { backgroundColor: changeColor + '14' }]}>
-          <Text style={[styles.changeText, { color: changeColor }]}>
-            {changePrefix}{market.change24h.toFixed(1)}%
-          </Text>
+        {/* Logo */}
+        <View style={styles.logoWrap}>
+          {logoUrl ? (
+            <Image source={{ uri: logoUrl }} style={styles.logoImg} />
+          ) : (
+            <View style={styles.logoFallback}>
+              <Text style={styles.logoFallbackText}>
+                {market.symbol.slice(0, 2)}
+              </Text>
+            </View>
+          )}
         </View>
-        <Text style={styles.volume}>OI: {formatVolume(market.totalOpenInterest)}</Text>
-        <Text style={styles.leverage}>{market.maxLeverage}x max</Text>
+
+        {/* Symbol + name col */}
+        <View style={styles.symbolCol}>
+          <View style={styles.symbolRow}>
+            <Text style={styles.marketName}>{market.symbol}</Text>
+            {isHot && <FlameIcon size={14} />}
+          </View>
+          <Text style={styles.marketSubname} numberOfLines={1}>{baseName}</Text>
+        </View>
+
+        {/* Price right-aligned */}
+        <View style={styles.priceCol}>
+          <Text style={styles.marketPrice}>{formatPrice(market.lastPrice)}</Text>
+          <View style={[styles.changePill, { backgroundColor: changeBg }]}>
+            <Text style={[styles.changeText, { color: changeColor }]}>
+              {changePositive ? '▲ ' : '▼ '}{changePrefix}{market.change24h.toFixed(2)}%
+            </Text>
+          </View>
+        </View>
       </View>
 
-      <View style={styles.oiLabelRow}>
-        <Text style={styles.oiLabel}>OI Utilization</Text>
-        <Text style={styles.oiPctText}>{Math.round(oiPct * 100)}%</Text>
-      </View>
-      <View style={styles.oiBar}>
-        <View style={[styles.oiFill, { width: `${oiPct * 100}%`, backgroundColor: oiFillColor }]} />
+      {/* Divider */}
+      <View style={styles.divider} />
+
+      {/* Stats row */}
+      <View style={styles.statsRow}>
+        <View style={styles.statCell}>
+          <Text style={styles.statLabel}>Vol</Text>
+          <Text style={styles.statValue}>{formatVolume(vol24h)}</Text>
+        </View>
+        <View style={styles.statCell}>
+          <Text style={styles.statLabel}>OI</Text>
+          <Text style={styles.statValue}>{formatVolume(market.totalOpenInterest)}</Text>
+        </View>
+        <View style={styles.oiBarCell}>
+          <View style={styles.oiBar}>
+            <View style={[styles.oiFill, { width: `${oiPct * 100}%` as any, backgroundColor: oiFillColor }]} />
+          </View>
+          <Text style={styles.oiPctText}>{Math.round(oiPct * 100)}%</Text>
+        </View>
       </View>
 
+      {/* Long / Short buttons */}
       <View style={styles.tradeRow}>
-        <TradeButton
-          label="Long ▲"
-          direction="long"
-          size="sm"
-          style={styles.tradeBtn}
+        <TouchableOpacity
+          style={[styles.dirBtn, styles.dirBtnLong]}
+          activeOpacity={0.7}
           onPress={() => onTrade(market.slabAddress, market.symbol, 'long')}
-        />
-        <TradeButton
-          label="Short ▼"
-          direction="short"
-          size="sm"
-          style={styles.tradeBtn}
+        >
+          <Text style={[styles.dirBtnText, { color: colors.long }]}>LONG ▲</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.dirBtn, styles.dirBtnShort]}
+          activeOpacity={0.7}
           onPress={() => onTrade(market.slabAddress, market.symbol, 'short')}
-        />
+        >
+          <Text style={[styles.dirBtnText, { color: colors.short }]}>SHORT ▼</Text>
+        </TouchableOpacity>
       </View>
     </Panel>
   );
@@ -287,82 +374,65 @@ const styles = StyleSheet.create({
   filters: { maxHeight: 48, marginTop: 12 },
   filtersContent: { paddingHorizontal: 16, alignItems: 'center' },
   list: { padding: 16, gap: 8 },
-  card: { gap: 10, marginBottom: 8 },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+  // ── Market card ─────────────────────────────────────────────────────────────
+  card: { gap: 10, marginBottom: 8, paddingHorizontal: 12, paddingVertical: 12 },
+
+  // Header
+  cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  logoWrap: { width: 36, height: 36 },
+  logoImg: { width: 36, height: 36, borderRadius: 18 },
+  logoFallback: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: colors.bgInset,
+    alignItems: 'center', justifyContent: 'center',
   },
+  logoFallbackText: {
+    fontFamily: fonts.mono, fontSize: 11, fontWeight: '700', color: colors.textMuted,
+  },
+  symbolCol: { flex: 1, gap: 2 },
+  symbolRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   marketName: {
-    fontFamily: fonts.display,
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.text,
+    fontFamily: fonts.mono, fontSize: 15, fontWeight: '700', color: colors.text,
   },
+  marketSubname: {
+    fontFamily: fonts.body, fontSize: 12, color: colors.textSecondary,
+  },
+  priceCol: { alignItems: 'flex-end', gap: 4 },
   marketPrice: {
-    fontFamily: fonts.mono,
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.text,
-    fontVariant: ['tabular-nums'],
-  },
-  cardMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
+    fontFamily: fonts.mono, fontSize: 18, fontWeight: '700',
+    color: colors.text, fontVariant: ['tabular-nums'],
   },
   changePill: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: radii.full,
+    paddingHorizontal: 7, paddingVertical: 2, borderRadius: radii.full,
   },
   changeText: {
-    fontFamily: fonts.mono,
-    fontSize: 12,
-    fontWeight: '600',
+    fontFamily: fonts.mono, fontSize: 12, fontWeight: '600',
     fontVariant: ['tabular-nums'],
   },
-  volume: {
-    fontFamily: fonts.body,
-    fontSize: 13,
-    color: colors.textSecondary,
-  },
-  leverage: {
-    fontFamily: fonts.mono,
-    fontSize: 11,
-    color: colors.textMuted,
-  },
-  oiLabelRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  oiLabel: {
-    fontFamily: fonts.body,
-    fontSize: 10,
-    color: colors.textMuted,
-    letterSpacing: 0.4,
-    textTransform: 'uppercase',
-  },
-  oiPctText: {
-    fontFamily: fonts.body,
-    fontSize: 10,
-    color: colors.textSecondary,
-  },
-  oiBar: {
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: colors.bgOverlay,
-    overflow: 'hidden',
-  },
-  oiFill: {
-    height: '100%',
-    borderRadius: 2,
-    backgroundColor: colors.accent,
-  },
+
+  // Divider
+  divider: { height: 1, backgroundColor: colors.border },
+
+  // Stats row
+  statsRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  statCell: { gap: 2 },
+  statLabel: { fontFamily: fonts.body, fontSize: 11, color: colors.textSecondary },
+  statValue: { fontFamily: fonts.mono, fontSize: 11, color: colors.text, fontVariant: ['tabular-nums'] },
+  oiBarCell: { flex: 1, gap: 4 },
+  oiBar: { height: 4, borderRadius: 2, backgroundColor: colors.bgOverlay, overflow: 'hidden' },
+  oiFill: { height: '100%', borderRadius: 2 },
+  oiPctText: { fontFamily: fonts.body, fontSize: 10, color: colors.textSecondary, textAlign: 'right' },
+
+  // Long / Short buttons
   tradeRow: { flexDirection: 'row', gap: 8 },
   tradeBtn: { flex: 1 },
+  dirBtn: {
+    flex: 1, height: 36, borderRadius: radii.md,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  dirBtnLong: { backgroundColor: colors.longSubtle },
+  dirBtnShort: { backgroundColor: colors.shortSubtle },
+  dirBtnText: { fontFamily: fonts.mono, fontSize: 12, fontWeight: '700' },
   empty: { alignItems: 'center', paddingTop: 40, gap: 12 },
   clearSearchBtn: {
     paddingHorizontal: 16,

@@ -124,7 +124,10 @@ jest.mock('react-native-reanimated', () => {
     // Hooks
     useSharedValue: (v) => ({ value: v }),
     useAnimatedStyle: (fn) => {
-      try { return fn(); } catch { return {}; }
+      try { return fn(); } catch (e) {
+        console.error('[reanimated mock] useAnimatedStyle callback threw:', e);
+        return {};
+      }
     },
     useDerivedValue: (fn) => ({ value: fn() }),
     useAnimatedScrollHandler: () => noop,

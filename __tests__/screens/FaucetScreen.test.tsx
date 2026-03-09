@@ -108,6 +108,8 @@ describe('FaucetScreen', () => {
         publicKey: mockPubkey,
         connect: jest.fn(),
         connecting: false,
+        balance: 5,
+        refreshBalance: jest.fn(),
       });
     });
 

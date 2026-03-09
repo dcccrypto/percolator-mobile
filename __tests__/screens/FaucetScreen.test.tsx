@@ -67,8 +67,8 @@ describe('FaucetScreen', () => {
   });
 
   it('shows Devnet badge', () => {
-    const { getByText } = render(<FaucetScreen />);
-    expect(getByText(/Devnet/i)).toBeTruthy();
+    const { getAllByText } = render(<FaucetScreen />);
+    expect(getAllByText(/Devnet/i).length).toBeGreaterThan(0);
   });
 
   it('shows connect hint when wallet not connected', () => {

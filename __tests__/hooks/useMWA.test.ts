@@ -82,7 +82,7 @@ describe('useMWA', () => {
     expect(result.current.connected).toBe(true);
   });
 
-  it('connect() handles errors gracefully', async () => {
+  it('connect() handles errors gracefully with sanitized message', async () => {
     mockTransact.mockImplementationOnce(() => {
       throw new Error('User rejected');
     });
@@ -95,7 +95,9 @@ describe('useMWA', () => {
     });
 
     expect(result.current.connected).toBe(false);
-    expect(result.current.error).toBe('User rejected');
+    // SDK/third-party error messages are collapsed to a generic string.
+    // 'User rejected' is not in USER_CONTROLLED_MESSAGES, so it is sanitized.
+    expect(result.current.error).toBe('Failed to connect wallet. Please try again.');
     expect(result.current.connecting).toBe(false);
   });
 
@@ -113,8 +115,8 @@ describe('useMWA', () => {
 
     // Raw error captured for Sentry — never shown to user
     expect(mockCaptureException).toHaveBeenCalledWith(rawError, { source: 'useMWA.connect' });
-    // UI only sees the sanitized message (not the raw SDK string)
-    expect(result.current.error).toBe('MWA_INTERNAL_CRASH: unexpected wallet state');
+    // UI sees only the generic sanitized message, NOT the raw SDK crash string
+    expect(result.current.error).toBe('Failed to connect wallet. Please try again.');
   });
 
   it('connect() calls captureException for non-Error thrown values', async () => {
@@ -129,7 +131,7 @@ describe('useMWA', () => {
     });
 
     expect(mockCaptureException).toHaveBeenCalledWith('string error', { source: 'useMWA.connect' });
-    expect(result.current.error).toBe('Failed to connect wallet');
+    expect(result.current.error).toBe('Failed to connect wallet. Please try again.');
   });
 
   it('connect() handles non-Error throws', async () => {
@@ -143,7 +145,7 @@ describe('useMWA', () => {
       await result.current.connect();
     });
 
-    expect(result.current.error).toBe('Failed to connect wallet');
+    expect(result.current.error).toBe('Failed to connect wallet. Please try again.');
   });
 
   it('connect() does NOT call captureException on successful connection', async () => {

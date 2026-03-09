@@ -58,7 +58,18 @@ export function useMWA() {
       // The UI layer (OnboardingScreen) shows only sanitized messages — raw strings
       // never reach the user (closes mobile #44, launch #962).
       captureException(err, { source: 'useMWA.connect' });
-      const message = err instanceof Error ? err.message : 'Failed to connect wallet';
+
+      // Only pass through error messages we explicitly throw (user-controlled copy).
+      // All SDK/third-party errors are collapsed to a generic string so internal
+      // crash details (e.g. 'MWA_INTERNAL_CRASH: ...') are never surfaced in the UI.
+      const USER_CONTROLLED_MESSAGES = new Set([
+        'Wallet returned no accounts. Please try again.',
+      ]);
+      const rawMessage = err instanceof Error ? err.message : '';
+      const message = USER_CONTROLLED_MESSAGES.has(rawMessage)
+        ? rawMessage
+        : 'Failed to connect wallet. Please try again.';
+
       setState({ connected: false, publicKey: null, connecting: false, error: message });
       return null;
     }

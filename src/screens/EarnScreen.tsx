@@ -289,6 +289,8 @@ export function EarnScreen() {
       // Compute total TVL across all vaults
       const tvl = results.reduce((sum, r) => sum + (r?.currentBalance ?? 0), 0);
       setTotalTvl(tvl);
+    }).catch(() => {
+      // Individual fetches already catch — this guards structural errors
     });
   }, [markets]);
 

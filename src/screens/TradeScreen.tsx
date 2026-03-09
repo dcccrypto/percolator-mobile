@@ -100,16 +100,11 @@ export function TradeScreen() {
     }
     // Fetch wallet token balance asynchronously
     import('../lib/solana').then(({ connection }) => {
-      import('@solana/web3.js').then(({ PublicKey: PK }) => {
-        connection
-          .getBalance(publicKey)
-          .then((lamports) => {
-            // Convert lamports to SOL
-            setWalletBalance(lamports / 1e9);
-          })
-          .catch(() => setWalletBalance(null));
-      });
-    });
+      connection
+        .getBalance(publicKey)
+        .then((lamports) => setWalletBalance(lamports / 1e9))
+        .catch(() => setWalletBalance(null));
+    }).catch(() => setWalletBalance(null));
   }, [connected, publicKey, slabAddress]);
 
   // Parse slippage from settings (e.g. '0.5%' → 0.005)

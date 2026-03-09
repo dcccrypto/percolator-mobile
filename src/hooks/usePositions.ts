@@ -44,33 +44,31 @@ function readPubkey(buf: Uint8Array, off: number): string {
   return new PublicKey(bytes).toBase58();
 }
 
-// Account layout offsets (matches Rust struct)
-const ACCT_SIZE = 256; // each account slot is 256 bytes (incl. padding)
-const ACCT_ACCOUNT_ID_OFF = 0;
-const ACCT_CAPITAL_OFF = 8;
-const ACCT_KIND_OFF = 24;
-const ACCT_PNL_OFF = 32;
-const ACCT_POSITION_SIZE_OFF = 80;
-const ACCT_ENTRY_PRICE_OFF = 96;
-const ACCT_OWNER_OFF = 184;
-
-// Slab layout offsets (must match percolator-prog compiled constants)
-// HEADER_LEN=104, CONFIG_LEN=512, ENGINE_OFF=624, ACCOUNTS_OFFSET=9424
-// ACCOUNTS_SECTION_OFF = ENGINE_OFF + offset_of!(RiskEngine, accounts)
-const ACCOUNTS_SECTION_OFF = 624 + 9424; // 10048
+import {
+  detectSlabLayout,
+  ACCT_ACCOUNT_ID_OFF,
+  ACCT_CAPITAL_OFF,
+  ACCT_KIND_OFF,
+  ACCT_PNL_OFF,
+  ACCT_POSITION_SIZE_OFF,
+  ACCT_ENTRY_PRICE_OFF,
+  ACCT_OWNER_OFF,
+  type SlabLayout,
+} from '../lib/slabLayout';
 
 function parseAccounts(
   data: Uint8Array,
   ownerBase58: string,
+  layout: SlabLayout,
 ): ParsedAccount[] {
   const results: ParsedAccount[] = [];
-  let offset = ACCOUNTS_SECTION_OFF;
+  let offset = layout.accountsOff;
 
-  while (offset + ACCT_SIZE <= data.length) {
+  while (offset + layout.acctSize <= data.length) {
     try {
       const kindByte = readU8(data, offset + ACCT_KIND_OFF);
       // kind 0 = User, kind 1 = LP; skip if invalid
-      if (kindByte > 1) { offset += ACCT_SIZE; continue; }
+      if (kindByte > 1) { offset += layout.acctSize; continue; }
 
       const owner = readPubkey(data, offset + ACCT_OWNER_OFF);
       if (owner === ownerBase58) {
@@ -88,7 +86,7 @@ function parseAccounts(
     } catch {
       // skip malformed slot
     }
-    offset += ACCT_SIZE;
+    offset += layout.acctSize;
   }
   return results;
 }
@@ -204,7 +202,9 @@ export function usePositions(walletPublicKey: string | null): UsePositionsResult
               if (!accountInfo) return;
 
               const data = new Uint8Array(accountInfo.data);
-              const accounts = parseAccounts(data, walletPublicKey!);
+              const layout = detectSlabLayout(data);
+              if (!layout) return; // unrecognised slab layout — skip
+              const accounts = parseAccounts(data, walletPublicKey!, layout);
 
               for (const acct of accounts) {
                 if (acct.positionSize === 0n) continue; // no open position

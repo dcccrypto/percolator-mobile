@@ -305,7 +305,7 @@ export function TradeScreen() {
               (currentMarket as any)?.volume24h != null
                 ? formatLarge((currentMarket as any).volume24h)
                 : currentMarket?.totalOpenInterest != null
-                  ? formatLarge(currentMarket.totalOpenInterest * 0.3) // proxy
+                  ? formatLarge((currentMarket.totalOpenInterest ?? 0) * 0.3) // proxy
                   : '—'
             }
           />

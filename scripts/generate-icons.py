@@ -5,6 +5,7 @@ Implements DESIGN-BRIEF-MOBILE-V2.md Section 1 spec.
 """
 
 import os
+import numpy as np
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 FONT_PATH = "/tmp/JetBrainsMono-Bold-Italic.ttf"
@@ -22,21 +23,27 @@ TEXT     = (225, 226, 232)       # #E1E2E8
 
 def radial_glow(img: Image.Image, cx: int, cy: int, radius: int,
                 color: tuple, alpha: float) -> Image.Image:
-    """Overlay a soft radial gradient glow on the image (RGBA composite)."""
-    overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
-    draw = ImageDraw.Draw(overlay)
-    steps = 120
+    """Overlay a smooth per-pixel radial gradient glow (no banding).
+
+    Uses numpy to compute distance from (cx, cy) for every pixel, then maps
+    distance → alpha via a smooth power curve.  This avoids the concentric-
+    ellipse stepping artifact that produced horizontal banding in earlier code.
+    """
     w, h = img.size
-    for i in range(steps, 0, -1):
-        r_i = int(radius * i / steps)
-        # Clamp ellipse coords to image bounds to prevent edge artifacts
-        x0 = max(0, cx - r_i)
-        y0 = max(0, cy - r_i)
-        x1 = min(w - 1, cx + r_i)
-        y1 = min(h - 1, cy + r_i)
-        a_i = int(alpha * 255 * (1.0 - i / steps) ** 1.15)
-        draw.ellipse([x0, y0, x1, y1], fill=(*color, a_i))
-    return Image.alpha_composite(img.convert("RGBA"), overlay)
+    ys, xs = np.mgrid[0:h, 0:w]
+    dist = np.sqrt((xs - cx).astype(np.float32) ** 2 +
+                   (ys - cy).astype(np.float32) ** 2)
+    t = np.clip(1.0 - dist / radius, 0.0, 1.0)
+    a_arr = (alpha * 255.0 * (t ** 1.15)).astype(np.uint8)
+
+    overlay = np.zeros((h, w, 4), dtype=np.uint8)
+    overlay[:, :, 0] = color[0]
+    overlay[:, :, 1] = color[1]
+    overlay[:, :, 2] = color[2]
+    overlay[:, :, 3] = a_arr
+
+    overlay_img = Image.fromarray(overlay, "RGBA")
+    return Image.alpha_composite(img.convert("RGBA"), overlay_img)
 
 
 def make_italic_glyph(char: str, font_size: int, fg_color: tuple,
@@ -138,27 +145,52 @@ def generate_app_icon():
     print(f"✅ icon.png ({SIZE}×{SIZE}) → {out_path}")
 
 
+def measure_glyph_width(font_size: int) -> int:
+    """Return the actual rendered sheared width of the P glyph at given font size."""
+    glyph = make_italic_glyph("P", font_size, (255, 255, 255), shear=0.22)
+    bbox = glyph.getbbox()
+    return (bbox[2] - bbox[0]) if bbox else 0
+
+
 def generate_adaptive_icon_fg():
     """512×512 adaptive icon foreground — italic P on transparent bg.
-    Glyph scaled to ~55% canvas width for visual weight."""
+    Glyph auto-scaled to exactly 55% canvas width (282px) per designer spec.
+    Nudge corrected so glyph sits centred within the circular mask overlay."""
     SIZE = 512
+    TARGET_W = 282  # 55% of 512px — designer spec (re-review Mar 2026)
     img = Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))
     cx = cy = SIZE // 2
-    # font_size=410 → glyph width ~283px ≈ 55% of 512px canvas (designer spec)
-    font_size = 410
-    nx = int(SIZE * 0.015)
+
+    # Auto-scale font_size to hit TARGET_W (±3px tolerance).
+    # Baseline: font_size=366 → ~282px sheared glyph width (calculated from
+    # raw P metrics: width=250, height=300, shear_extra=66 at font_size=410).
+    font_size = 366
+    for _ in range(6):
+        actual_w = measure_glyph_width(font_size)
+        if abs(actual_w - TARGET_W) <= 3:
+            break
+        if actual_w > 0:
+            font_size = int(font_size * TARGET_W / actual_w)
+    actual_w = measure_glyph_width(font_size)
+    print(f"  adaptive-icon: font_size={font_size}, glyph_width={actual_w}px "
+          f"({actual_w/SIZE*100:.1f}% of {SIZE}px)")
+
+    # Nudge: push right to counter shear lean in circle mask (+3% canvas),
+    # push down to counter bowl-heavy top bias (+2.5% canvas).
+    nx = int(SIZE * 0.030)   # ~15px right
+    ny = int(SIZE * 0.025)   # ~13px down
 
     glyph_glow = make_italic_glyph("P", font_size, (*ACCENT,), shear=0.22)
-    glyph_glow = glyph_glow.filter(ImageFilter.GaussianBlur(radius=16))
-    img = place_glyph(img, glyph_glow, cx, cy, nudge_x=nx)
+    glyph_glow = glyph_glow.filter(ImageFilter.GaussianBlur(radius=14))
+    img = place_glyph(img, glyph_glow, cx, cy, nudge_x=nx, nudge_y=ny)
     # Tighter glow for vivid accent
     glyph_glow2 = make_italic_glyph("P", font_size, (*ACCENT,), shear=0.22)
-    glyph_glow2 = glyph_glow2.filter(ImageFilter.GaussianBlur(radius=6))
-    img = place_glyph(img, glyph_glow2, cx, cy, nudge_x=nx)
+    glyph_glow2 = glyph_glow2.filter(ImageFilter.GaussianBlur(radius=5))
+    img = place_glyph(img, glyph_glow2, cx, cy, nudge_x=nx, nudge_y=ny)
 
     # Pure #FFFFFF glyph (designer spec: not lavender-grey TEXT)
     glyph_white = make_italic_glyph("P", font_size, (255, 255, 255), shear=0.22)
-    img = place_glyph(img, glyph_white, cx, cy, nudge_x=nx)
+    img = place_glyph(img, glyph_white, cx, cy, nudge_x=nx, nudge_y=ny)
 
     out_path = os.path.join(OUT_DIR, "adaptive-icon-foreground.png")
     img.save(out_path, "PNG", optimize=True)
@@ -209,10 +241,17 @@ def generate_splash():
     except Exception as e:
         print(f"  (wordmark skipped: {e})")
 
-    # Clean bottom/top strips to pure BG to remove any glow edge artifacts
+    # Clean bottom/top strips to pure BG to remove any glow/blur edge artifacts.
+    # Increased to 500px bottom (from 200px) after designer flagged noise band at
+    # bottom edge (Mar 2026 re-review). Extra margin ensures GaussianBlur halos
+    # from the glyph layer are fully covered regardless of glyph placement variance.
     clean = ImageDraw.Draw(img)
-    clean.rectangle([0, H - 200, W, H], fill=(*BG_COLOR, 255))
+    clean.rectangle([0, H - 500, W, H], fill=(*BG_COLOR, 255))
     clean.rectangle([0, 0, W, 200], fill=(*BG_COLOR, 255))
+    # Belt-and-suspenders: paste a solid PIL image strip over the very bottom
+    # to guarantee no alpha bleed from prior compositing operations.
+    bottom_strip = Image.new("RGBA", (W, 500), (*BG_COLOR, 255))
+    img.paste(bottom_strip, (0, H - 500))
 
     out_path = os.path.join(OUT_DIR, "splash.png")
     img.convert("RGB").save(out_path, "PNG", optimize=True)

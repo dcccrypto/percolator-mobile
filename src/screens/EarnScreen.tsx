@@ -222,7 +222,7 @@ const VaultCard = memo(function VaultCard({ vault }: { vault: VaultInfo }) {
               disabled={confirming}
             >
               {confirming ? (
-                <ActivityIndicator size="small" color="#000" />
+                <ActivityIndicator size="small" color={colors.text} />
               ) : (
                 <Text style={styles.confirmBtnText}>
                   {mode === 'deposit' ? 'Confirm Deposit' : 'Confirm Withdraw'}

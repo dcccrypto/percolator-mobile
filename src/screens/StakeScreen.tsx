@@ -197,7 +197,7 @@ const PoolCard = memo(function PoolCard({ pool }: { pool: StakePool }) {
               disabled={confirming}
             >
               {confirming ? (
-                <ActivityIndicator size="small" color="#000" />
+                <ActivityIndicator size="small" color={colors.text} />
               ) : (
                 <Text style={styles.confirmBtnText}>
                   {mode === 'stake' ? 'Confirm Stake' : 'Confirm Unstake'}
@@ -253,7 +253,7 @@ export function StakeScreen() {
     setRefreshing(false);
   }, [fetchPools]);
 
-  const showPlaceholder = error === 'unavailable' && pools.length === 0;
+  const showPlaceholder = error != null && pools.length === 0;
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>

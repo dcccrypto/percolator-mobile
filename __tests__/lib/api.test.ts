@@ -57,18 +57,27 @@ describe('api', () => {
   // getMarket
   // ---------------------------------------------------------------------------
   describe('getMarket', () => {
-    it('fetches a single market by slab address', async () => {
+    it('fetches a single market by slab address via list endpoint', async () => {
       const mockMarket = { slabAddress: 'slab1', symbol: 'SOL-PERP' };
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: () => Promise.resolve({ market: mockMarket }),
+        json: () => Promise.resolve({ markets: [mockMarket, { slabAddress: 'slab2', symbol: 'BTC-PERP' }] }),
       });
 
       const result = await api.getMarket('slab1');
       expect(result).toEqual(mockMarket);
       expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining('/markets/slab1'),
+        expect.stringContaining('/markets'),
       );
+    });
+
+    it('throws when market not found', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ markets: [{ slabAddress: 'other', symbol: 'BTC-PERP' }] }),
+      });
+
+      await expect(api.getMarket('nonexistent')).rejects.toThrow('Market nonexistent not found');
     });
   });
 

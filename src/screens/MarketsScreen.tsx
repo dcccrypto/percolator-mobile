@@ -101,7 +101,7 @@ const MarketCard = memo(function MarketCard({
   const changeBg = changePositive ? colors.longSubtle : colors.shortSubtle;
   const changePrefix = changePositive ? '+' : '';
 
-  const maxOi = (market as any).maxOpenInterest ?? 5_000_000;
+  const maxOi = 5_000_000; // Default cap — backend doesn't expose maxOpenInterest per market
   const oiPct = Math.min((market.totalOpenInterest ?? 0) / maxOi, 1);
   const oiFillColor =
     oiPct < 0.5 ? colors.accent :

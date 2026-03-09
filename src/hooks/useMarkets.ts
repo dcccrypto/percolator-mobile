@@ -48,21 +48,22 @@ export function useMarkets() {
 
   // Load cached markets on mount for instant first render
   useEffect(() => {
+    let cancelled = false;
     SecureStore.getItemAsync(MARKETS_CACHE_KEY)
       .then((cached) => {
-        if (cached && !cacheLoadedRef.current) {
-          try {
-            const parsed = JSON.parse(cached) as Market[];
-            if (Array.isArray(parsed) && parsed.length > 0) {
-              setMarkets(parsed);
-              cacheLoadedRef.current = true;
-            }
-          } catch {
-            // Invalid cache, ignore
+        if (cancelled || !cached || cacheLoadedRef.current) return;
+        try {
+          const parsed = JSON.parse(cached) as Market[];
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setMarkets(parsed);
+            cacheLoadedRef.current = true;
           }
+        } catch {
+          // Invalid cache, ignore
         }
       })
       .catch(() => {});
+    return () => { cancelled = true; };
   }, []);
 
   const fetchMarkets = useCallback(async () => {

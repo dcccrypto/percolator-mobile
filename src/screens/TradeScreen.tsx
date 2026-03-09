@@ -39,7 +39,7 @@ const LEVERAGE_OPTIONS = ['1x', '2x', '5x', '10x', '20x'];
 
 export function TradeScreen() {
   const route = useRoute<RouteProp<TradeRouteParams, 'Trade'>>();
-  const { connected, publicKey } = useMWA();
+  const { connected, publicKey, balance: walletBalance, refreshBalance } = useMWA();
   const { selectedMarket, userIdx } = useMarketStore();
   const settings = useSettingsStore();
   const { markets } = useMarkets();
@@ -88,26 +88,12 @@ export function TradeScreen() {
     sig: null,
   });
 
-  // Wallet balance for MAX button (derive from collateral)
-  const [walletBalance, setWalletBalance] = useState<number | null>(null);
+  // Refresh wallet balance when entering trade screen
   useEffect(() => {
-    if (!connected || !publicKey || !slabAddress) {
-      setWalletBalance(null);
-      return;
+    if (connected && publicKey) {
+      refreshBalance();
     }
-    // Fetch wallet token balance asynchronously
-    import('../lib/solana').then(({ connection }) => {
-      import('@solana/web3.js').then(({ PublicKey: PK }) => {
-        connection
-          .getBalance(publicKey)
-          .then((lamports) => {
-            // Convert lamports to SOL
-            setWalletBalance(lamports / 1e9);
-          })
-          .catch(() => setWalletBalance(null));
-      });
-    });
-  }, [connected, publicKey, slabAddress]);
+  }, [connected, publicKey, refreshBalance]);
 
   // Parse slippage from settings (e.g. '0.5%' → 0.005)
   const slippagePct = useMemo(() => {
@@ -302,11 +288,9 @@ export function TradeScreen() {
           <StatCell
             label="Volume"
             value={
-              (currentMarket as any)?.volume24h != null
-                ? formatLarge((currentMarket as any).volume24h)
-                : currentMarket?.totalOpenInterest != null
-                  ? formatLarge(currentMarket.totalOpenInterest * 0.3) // proxy
-                  : '—'
+              currentMarket?.totalOpenInterest != null
+                ? formatLarge(currentMarket.totalOpenInterest * 0.3)
+                : '—'
             }
           />
           <StatCell

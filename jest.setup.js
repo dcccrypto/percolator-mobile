@@ -159,11 +159,20 @@ global.__DEV__ = true;
 jest.mock('expo-font', () => ({
   loadAsync: jest.fn().mockResolvedValue(undefined),
   isLoaded: jest.fn().mockReturnValue(true),
+  useFonts: jest.fn(() => [true]),
 }));
 
 jest.mock('expo-status-bar', () => ({
   StatusBar: () => null,
 }));
+
+// --------------------------------------------------------------------------
+// Google Fonts mocks
+// --------------------------------------------------------------------------
+const mockFontProxy = new Proxy({}, { get: () => 'font-mock' });
+jest.mock('@expo-google-fonts/space-grotesk', () => mockFontProxy);
+jest.mock('@expo-google-fonts/outfit', () => mockFontProxy);
+jest.mock('@expo-google-fonts/jetbrains-mono', () => mockFontProxy);
 
 // --------------------------------------------------------------------------
 // expo-haptics mock

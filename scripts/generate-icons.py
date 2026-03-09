@@ -182,7 +182,12 @@ def generate_adaptive_icon_fg():
     SIZE = 512
     SAFE_INSET = 87           # Android 66% safe zone inset
     SAFE_SIZE = SIZE - 2 * SAFE_INSET   # 338px
-    MAX_GLYPH_DIM = int(SAFE_SIZE * 0.60)  # 202px — radius 101px, fits circle masks
+    # Designer spec: 55% of canvas, but must fit within Android safe-zone circle
+    # (r=169px). Italic P's diagonal extent exceeds circle at 55%, so we use the
+    # safe-zone diameter (338px) minus padding for the circle's inscribed area.
+    # Testing shows 48% canvas (246px) keeps all solid pixels inside the circle.
+    SAFE_CIRCLE_R = SAFE_SIZE // 2   # 169px
+    MAX_GLYPH_DIM = int(SAFE_CIRCLE_R * 2 * 0.73)  # ~247px — fills ~48% canvas, fits circle masks
     img = Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))
     cx = cy = SIZE // 2
 

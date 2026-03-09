@@ -212,49 +212,49 @@ def generate_adaptive_icon_fg():
         font_size = int(font_size * 0.90)
         gw, gh = measure_glyph_size(font_size)
 
-    # No optical nudge — let make_italic_glyph's square-pad keep true centre.
-    # The shear transform moves the visual weight slightly; the square canvas
-    # already compensates for this, so geometric centre == safe placement.
-    nx = 0
-    ny = 0
-
-    glyph_glow = make_italic_glyph("P", font_size, (*ACCENT,), shear=0.22)
-    glyph_glow = glyph_glow.filter(ImageFilter.GaussianBlur(radius=6))  # reduced: 12→6 to stay in safe circle
-    img = place_glyph(img, glyph_glow, cx, cy, nudge_x=nx, nudge_y=ny)
-    # Tighter inner glow for vivid #9945FF
-    glyph_glow2 = make_italic_glyph("P", font_size, (*ACCENT,), shear=0.22)
-    glyph_glow2 = glyph_glow2.filter(ImageFilter.GaussianBlur(radius=2))  # reduced: 4→2
-    img = place_glyph(img, glyph_glow2, cx, cy, nudge_x=nx, nudge_y=ny)
+    # No glow on the foreground layer — glow lives in generate_adaptive_icon_bg().
+    # Purple ACCENT glow on a transparent FG bleeds into transparent regions,
+    # which renders as a coloured shadow on any light or white launcher background.
+    # Pure white P on transparent bg is correct for any launcher background colour.
 
     # Pure #FFFFFF glyph (designer spec: not lavender-grey TEXT)
     glyph_white = make_italic_glyph("P", font_size, (255, 255, 255), shear=0.22)
-    img = place_glyph(img, glyph_white, cx, cy, nudge_x=nx, nudge_y=ny)
+    img = place_glyph(img, glyph_white, cx, cy)
+
+    # Hard-clip any pixel outside safe zone circle (r=169px) — handles sub-pixel AA.
+    arr = np.array(img)
+    SAFE_R = (SIZE - 2 * SAFE_INSET) / 2  # 169px
+    ys_v, xs_v = np.mgrid[0:SIZE, 0:SIZE]
+    dist_map = np.sqrt((xs_v - SIZE // 2).astype(np.float32) ** 2 +
+                       (ys_v - SIZE // 2).astype(np.float32) ** 2)
+    arr[dist_map > SAFE_R, 3] = 0
+    img = Image.fromarray(arr, "RGBA")
 
     out_path = os.path.join(OUT_DIR, "adaptive-icon-foreground.png")
     img.save(out_path, "PNG", optimize=True)
 
-    # Verify all non-transparent pixels are within the 66% safe zone circle (radius 169px)
-    result = img.load()
-    cx_v, cy_v = SIZE // 2, SIZE // 2
-    SAFE_R = (SIZE - 2 * SAFE_INSET) / 2  # 169px
-    violations = 0
-    for py in range(SIZE):
-        for px in range(SIZE):
-            if result[px, py][3] > 10:  # non-transparent pixel
-                dist = ((px - cx_v) ** 2 + (py - cy_v) ** 2) ** 0.5
-                if dist > SAFE_R:
-                    violations += 1
-    if violations > 0:
-        print(f"⚠️  WARNING: {violations} pixels outside safe zone circle (r={SAFE_R:.0f}px) — reduce glyph or blur")
-    else:
-        print(f"✅ Safe zone verified: all pixels within r={SAFE_R:.0f}px circle")
+    # Verify: safe zone and no ACCENT glow bleeding
+    violations = int((arr[:, :, 3][dist_map > SAFE_R] > 0).sum())
+    accent_px = int(((arr[:, :, 3] > 10) &
+                     (arr[:, :, 2].astype(int) - arr[:, :, 0].astype(int) > 60) &
+                     (arr[:, :, 0] < 200)).sum())
+    print(f"{'✅' if violations == 0 else '⚠️ '} Safe zone: {violations} violations (r={SAFE_R:.0f}px)")
+    print(f"{'✅' if accent_px == 0 else '⚠️ '} Glow check: {accent_px} ACCENT pixels in FG (0=clean)")
     print(f"✅ adaptive-icon-foreground.png ({SIZE}×{SIZE}) → {out_path}")
 
 
 def generate_adaptive_icon_bg():
-    """512×512 adaptive icon background — solid #0D0D0F."""
+    """512×512 adaptive icon background — #0D0D0F + radial #9945FF glow.
+
+    Glow lives here (not on the foreground) so FG is pure white P on transparent —
+    no shadow visible on any launcher background colour.
+    """
     SIZE = 512
-    Image.new("RGB", (SIZE, SIZE), BG_COLOR).save(
+    cx = cy = SIZE // 2
+    img = Image.new("RGBA", (SIZE, SIZE), (*BG_COLOR, 255))
+    img = radial_glow(img, cx, cy, 180, ACCENT, 0.40)
+    img = radial_glow(img, cx, cy, 240, ACCENT, 0.15)
+    img.convert("RGB").save(
         os.path.join(OUT_DIR, "adaptive-icon-background.png"), "PNG")
     print(f"✅ adaptive-icon-background.png ({SIZE}×{SIZE})")
 
@@ -295,17 +295,19 @@ def generate_splash():
     except Exception as e:
         print(f"  (wordmark skipped: {e})")
 
-    # Clean bottom/top strips to pure BG to remove any glow/blur edge artifacts.
-    # Increased to 500px bottom (from 200px) after designer flagged noise band at
-    # bottom edge (Mar 2026 re-review). Extra margin ensures GaussianBlur halos
-    # from the glyph layer are fully covered regardless of glyph placement variance.
+    # Clean bottom/top strips — belt-and-suspenders: PIL draw + numpy fill.
+    # 600px bottom (glyph content ends ~1051px from bottom — plenty of margin).
+    BOTTOM_CLEAN = 600
+    TOP_CLEAN = 300
     clean = ImageDraw.Draw(img)
-    clean.rectangle([0, H - 500, W, H], fill=(*BG_COLOR, 255))
-    clean.rectangle([0, 0, W, 200], fill=(*BG_COLOR, 255))
-    # Belt-and-suspenders: paste a solid PIL image strip over the very bottom
-    # to guarantee no alpha bleed from prior compositing operations.
-    bottom_strip = Image.new("RGBA", (W, 500), (*BG_COLOR, 255))
-    img.paste(bottom_strip, (0, H - 500))
+    clean.rectangle([0, H - BOTTOM_CLEAN, W, H], fill=(*BG_COLOR, 255))
+    clean.rectangle([0, 0, W, TOP_CLEAN], fill=(*BG_COLOR, 255))
+    # Numpy-level fill: zero out any residual alpha/colour in the clean zones
+    # (guards against any alpha-bleed from alpha_composite operations above).
+    arr = np.array(img)
+    arr[H - BOTTOM_CLEAN:, :] = [*BG_COLOR, 255]
+    arr[:TOP_CLEAN, :] = [*BG_COLOR, 255]
+    img = Image.fromarray(arr, "RGBA")
 
     out_path = os.path.join(OUT_DIR, "splash.png")
     img.convert("RGB").save(out_path, "PNG", optimize=True)

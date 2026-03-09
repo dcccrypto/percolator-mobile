@@ -218,7 +218,11 @@ export const api = {
 
   /** Get stake pools */
   async getStakePools(): Promise<StakePool[]> {
-    const data = await fetchJSON<{ pools: StakePool[] }>(`${WEB_API_BASE}/stake/pools`);
-    return data.pools;
+    const data = await fetchJSON<{ pools: any[] }>(`${WEB_API_BASE}/stake/pools`);
+    return data.pools.map((p) => ({
+      ...p,
+      // API returns cooldownSlots; convert to seconds (400ms/slot on Solana)
+      cooldownSeconds: p.cooldownSeconds ?? (p.cooldownSlots ?? 0) * 0.4,
+    }));
   },
 };

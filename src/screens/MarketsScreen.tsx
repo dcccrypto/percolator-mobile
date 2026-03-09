@@ -321,7 +321,7 @@ export function MarketsScreen() {
         <TouchableOpacity
           style={styles.createMarketBtn}
           activeOpacity={0.7}
-          onPress={() => navigation.navigate('CreateMarket' as never)}
+          onPress={() => navigation.navigate('More' as never, { screen: 'CreateMarket' } as never)}
         >
           <Text style={styles.createMarketText}>+ Create Market</Text>
         </TouchableOpacity>

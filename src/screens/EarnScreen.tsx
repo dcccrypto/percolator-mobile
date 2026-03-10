@@ -26,6 +26,12 @@ function formatUsd(value: number | null): string {
   return `$${value.toFixed(2)}`;
 }
 
+/** Divide a raw on-chain integer by 10^decimals to get the human-readable value */
+function fromRaw(raw: number | null | undefined, decimals: number): number | null {
+  if (raw == null || !isFinite(raw)) return null;
+  return raw / 10 ** decimals;
+}
+
 function hashColor(str: string): string {
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
@@ -42,6 +48,7 @@ interface VaultInfo {
   symbol: string;
   name: string;
   logoUrl: string | null;
+  decimals: number;
   totalOpenInterest: number | null;
   insurance: InsuranceData | null;
   insuranceLoading: boolean;
@@ -110,7 +117,7 @@ const VaultCard = memo(function VaultCard({ vault }: { vault: VaultInfo }) {
             <ActivityIndicator size="small" color={colors.textMuted} />
           ) : (
             <Text style={styles.balanceValue}>
-              {formatUsd(vault.insurance?.currentBalance ?? null)}
+              {formatUsd(fromRaw(vault.insurance?.currentBalance ?? null, vault.decimals))}
             </Text>
           )}
           <Text style={styles.balanceLabel}>Balance</Text>
@@ -126,7 +133,7 @@ const VaultCard = memo(function VaultCard({ vault }: { vault: VaultInfo }) {
         <View style={styles.statCell}>
           <Text style={styles.statLabel}>Fee Revenue</Text>
           <Text style={styles.statValue}>
-            {vault.insurance ? formatUsd(vault.insurance.feeRevenue) : '\u2014'}
+            {vault.insurance ? formatUsd(fromRaw(vault.insurance.feeRevenue, vault.decimals)) : '\u2014'}
           </Text>
         </View>
       </View>
@@ -263,6 +270,7 @@ export function EarnScreen() {
       symbol: m.symbol,
       name: m.name,
       logoUrl: m.logoUrl,
+      decimals: m.decimals ?? 6,
       totalOpenInterest: m.totalOpenInterest,
       insurance: null,
       insuranceLoading: true,
@@ -286,8 +294,12 @@ export function EarnScreen() {
       }));
       setVaults(updated);
 
-      // Compute total TVL across all vaults
-      const tvl = results.reduce((sum, r) => sum + (r?.currentBalance ?? 0), 0);
+      // Compute total TVL across all vaults (divide each by token decimals)
+      const tvl = results.reduce(
+        (sum, r, i) =>
+          sum + (fromRaw(r?.currentBalance ?? null, initial[i].decimals) ?? 0),
+        0,
+      );
       setTotalTvl(tvl);
     }).catch(() => {
       // Individual fetches already catch — this guards structural errors

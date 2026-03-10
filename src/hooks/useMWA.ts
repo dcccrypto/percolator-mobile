@@ -1,5 +1,4 @@
 import { useState, useCallback } from 'react';
-import { Alert, Linking } from 'react-native';
 import { transact } from '@solana-mobile/mobile-wallet-adapter-protocol';
 import { PublicKey } from '@solana/web3.js';
 import * as SecureStore from 'expo-secure-store';
@@ -14,6 +13,9 @@ export function useMWA() {
   const wallet = useWalletStore();
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // GH #77 — replaces Alert.alert for no-wallet errors with a branded sheet
+  const [showInstallSheet, setShowInstallSheet] = useState(false);
+  const dismissInstallSheet = useCallback(() => setShowInstallSheet(false), []);
 
   const connect = useCallback(async () => {
     setConnecting(true);
@@ -62,14 +64,8 @@ export function useMWA() {
         /no installed wallet|wallet.*not found|Found no.*wallet/i.test(rawMessage);
 
       if (isNoWallet) {
-        Alert.alert(
-          'No Wallet Found',
-          'Please install a Solana wallet (Phantom or Solflare) to continue.',
-          [
-            { text: 'Install Phantom', onPress: () => Linking.openURL('https://phantom.app/download') },
-            { text: 'Cancel', style: 'cancel' },
-          ],
-        );
+        // GH #77 — surface branded ConnectWalletSheet instead of raw Alert
+        setShowInstallSheet(true);
       }
 
       const USER_CONTROLLED_MESSAGES = new Set([
@@ -148,6 +144,8 @@ export function useMWA() {
     balance: wallet.balance,
     connecting,
     error,
+    showInstallSheet,
+    dismissInstallSheet,
     connect,
     disconnect,
     signAndSend,

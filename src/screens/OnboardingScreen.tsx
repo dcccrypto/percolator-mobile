@@ -16,6 +16,8 @@ import { fonts } from '../theme/fonts';
 import { useMWA } from '../hooks/useMWA';
 import { useDemoStore } from '../store/demoStore';
 import { OnboardingSlide, OnboardingSlideData } from '../components/onboarding/OnboardingSlide';
+import { ConnectWalletSheet } from '../components/wallet/ConnectWalletSheet';
+import BottomSheet from '@gorhom/bottom-sheet';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -67,10 +69,20 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
   const [showWallets, setShowWallets] = useState(false);
   const [connectStep, setConnectStep] = useState<ConnectStep>(null);
   const [connectError, setConnectError] = useState<string | null>(null);
-  const { connect, error: mwaError } = useMWA();
+  const { connect, error: mwaError, showInstallSheet, dismissInstallSheet } = useMWA();
   const enterDemo = useDemoStore((s) => s.enterDemo);
+  const installSheetRef = useRef<BottomSheet>(null);
 
   const isTransitioning = useRef(false);
+
+  // GH #77 — open/close the branded install sheet based on useMWA state
+  React.useEffect(() => {
+    if (showInstallSheet) {
+      installSheetRef.current?.expand();
+    } else {
+      installSheetRef.current?.close();
+    }
+  }, [showInstallSheet]);
 
   // Translate raw MWA errors into user-friendly messages
   React.useEffect(() => {
@@ -223,6 +235,9 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
             </Text>
           </TouchableOpacity>
         </View>
+
+        {/* GH #77 — branded sheet replaces Alert.alert for no-wallet errors */}
+        <ConnectWalletSheet ref={installSheetRef} onDismiss={dismissInstallSheet} />
       </SafeAreaView>
     );
   }

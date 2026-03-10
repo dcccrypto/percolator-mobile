@@ -1,8 +1,11 @@
-import React, { useState, useCallback, useEffect, lazy, Suspense } from 'react';
+import React, { useState, useCallback, useEffect, useRef, lazy, Suspense } from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Text, ActivityIndicator, View, StyleSheet } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
+import BottomSheet from '@gorhom/bottom-sheet';
+import { ConnectWalletSheet } from '../components/wallet/ConnectWalletSheet';
+import { useMWA } from '../hooks/useMWA';
 import {
   MarketsTabIcon,
   TradeTabIcon,
@@ -177,6 +180,17 @@ const ONBOARDING_KEY = 'percolator_onboarded';
  */
 export function RootNavigator() {
   const [onboarded, setOnboarded] = useState<boolean | null>(null); // null = loading
+  const { showInstallSheet, dismissInstallSheet } = useMWA();
+  const installSheetRef = useRef<BottomSheet>(null);
+
+  // GH #87 — globally mount ConnectWalletSheet so it works from any screen
+  useEffect(() => {
+    if (showInstallSheet) {
+      installSheetRef.current?.expand();
+    } else {
+      installSheetRef.current?.close();
+    }
+  }, [showInstallSheet]);
 
   // Load persisted onboarding state on mount
   useEffect(() => {
@@ -203,9 +217,15 @@ export function RootNavigator() {
     );
   }
 
-  if (!onboarded) {
-    return <OnboardingScreen onComplete={handleOnboardingComplete} />;
-  }
-
-  return <MainTabs />;
+  return (
+    <>
+      {!onboarded ? (
+        <OnboardingScreen onComplete={handleOnboardingComplete} />
+      ) : (
+        <MainTabs />
+      )}
+      {/* GH #87 — global ConnectWalletSheet so all screens get the branded sheet */}
+      <ConnectWalletSheet ref={installSheetRef} onDismiss={dismissInstallSheet} />
+    </>
+  );
 }

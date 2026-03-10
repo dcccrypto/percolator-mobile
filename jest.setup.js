@@ -256,6 +256,10 @@ jest.mock('@gorhom/bottom-sheet', () => {
   };
 });
 
+// react-native-safe-area-context is auto-mocked via __mocks__/react-native-safe-area-context.js
+
+// @react-navigation/native is auto-mocked via __mocks__/@react-navigation/native.js
+
 // --------------------------------------------------------------------------
 // react-native-gesture-handler mock
 // --------------------------------------------------------------------------

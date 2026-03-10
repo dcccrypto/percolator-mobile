@@ -16,6 +16,7 @@ import { FilterPill } from '../components/ui/FilterPill';
 import { ErrorBanner } from '../components/ui/ErrorBanner';
 import { useMWA } from '../hooks/useMWA';
 import { useCreateMarket } from '../hooks/useCreateMarket';
+import { WizardProgressBar } from '../components/wizard/WizardProgressBar';
 
 export function MarketCreationScreen() {
   const { connected, connect, connecting } = useMWA();
@@ -77,6 +78,9 @@ export function MarketCreationScreen() {
       <View style={styles.header}>
         <Text style={styles.title}>Create Market</Text>
       </View>
+
+      {/* Wizard progress bar — step 0 = Market Details */}
+      <WizardProgressBar currentStep={0} />
 
       {/* Mode Toggle */}
       <View style={styles.modeToggle}>

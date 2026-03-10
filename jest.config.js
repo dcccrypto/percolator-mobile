@@ -37,5 +37,7 @@ module.exports = {
     '\\.png$': '<rootDir>/__mocks__/fileMock.js',
     '\\.jpg$': '<rootDir>/__mocks__/fileMock.js',
     '\\.svg$': '<rootDir>/__mocks__/fileMock.js',
+    '^react-native-safe-area-context$': '<rootDir>/__mocks__/react-native-safe-area-context.js',
+    '^@react-navigation/native$': '<rootDir>/__mocks__/@react-navigation/native.js',
   },
 };

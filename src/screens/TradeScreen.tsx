@@ -21,6 +21,7 @@ import { FilterPill } from '../components/ui/FilterPill';
 import { ErrorBanner } from '../components/ui/ErrorBanner';
 import { MiniChart } from '../components/chart/MiniChart';
 import { SuccessToast } from '../components/trade/SuccessToast';
+import { CreateMarketFAB } from '../components/trade/CreateMarketFAB';
 import { useMWA } from '../hooks/useMWA';
 import { usePriceStream as usePriceStreamMulti } from '../hooks/usePriceStream';
 import { usePriceHistory, type Timeframe } from '../hooks/usePriceHistory';
@@ -524,6 +525,9 @@ export function TradeScreen() {
           </View>
         )}
       </ScrollView>
+
+      {/* Create Market FAB — fixed bottom-right */}
+      <CreateMarketFAB />
     </SafeAreaView>
   );
 }

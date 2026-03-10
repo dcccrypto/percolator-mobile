@@ -1,339 +1,430 @@
-import React, { useState, useCallback } from 'react';
+/**
+ * FaucetScreen — redesigned per designer hackathon spec.
+ *
+ * Per designer spec: HACKATHON-MOBILE-UX-SPECS.md §2
+ *
+ * 3 sections:
+ *   1. SOL Balance — JetBrains Mono 40sp, "Devnet" amber subtext
+ *   2. Airdrop SOL — violet full-width CTA, loading + success states
+ *   3. Mint Test Tokens — CA input + secondary MINT TOKENS button
+ */
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  FlatList,
-  Alert,
+  TextInput,
   ActivityIndicator,
+  ScrollView,
+  Animated,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
 import { LAMPORTS_PER_SOL } from '@solana/web3.js';
-import { colors, radii } from '../theme/tokens';
+import { colors } from '../theme/tokens';
 import { fonts } from '../theme/fonts';
-import { Panel } from '../components/ui/Panel';
-import { InputField } from '../components/ui/InputField';
-import { ErrorBanner } from '../components/ui/ErrorBanner';
 import { connection } from '../lib/solana';
 import { useMWA } from '../hooks/useMWA';
 
-const TOKENS = [
-  { id: 'sol', name: 'SOL', icon: '◆', defaultAmount: '1.0' },
-  { id: 'usdc', name: 'USDC', icon: '$', defaultAmount: '1000' },
-];
+// Spec-exact design tokens
+const VIOLET = '#7C3AED';
+const AMBER = '#E5A100';
+const ACCENT = '#9945FF';
+const BG_CARD = '#0F1018';
+const BG_INSET = '#141820';
+const BORDER = '#1C1F2E';
+const TEXT = '#E1E2E8';
+const TEXT_MUTED = '#454B5F';
+const TEXT_SECONDARY = '#7A7F96';
+const GREEN_SUCCESS = '#14F195';
+const RED_ERROR = '#FF3B5C';
+const AMBER_BG = '#1A1200';
 
-interface MintRecord {
-  id: string;
-  token: string;
-  amount: string;
-  time: string;
-  status: '✓' | '⏳' | '✗';
-}
+// Toast types
+type ToastState = { type: 'success' | 'error'; message: string } | null;
 
-export function FaucetScreen() {
-  const { connected, publicKey, balance, refreshBalance } = useMWA();
-  const [selectedToken, setSelectedToken] = useState('sol');
-  const [amount, setAmount] = useState('1.0');
-  const [minting, setMinting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [history, setHistory] = useState<MintRecord[]>([]);
+function Toast({ state }: { state: ToastState }) {
+  const opacity = useRef(new Animated.Value(0)).current;
 
-  const token = TOKENS.find((t) => t.id === selectedToken)!;
-
-  const handleMint = useCallback(async () => {
-    if (!connected || !publicKey) {
-      setError('Connect your wallet first');
+  useEffect(() => {
+    if (!state) {
+      opacity.setValue(0);
       return;
     }
+    Animated.sequence([
+      Animated.timing(opacity, { toValue: 1, duration: 200, useNativeDriver: true }),
+      Animated.delay(2500),
+      Animated.timing(opacity, { toValue: 0, duration: 300, useNativeDriver: true }),
+    ]).start();
+  }, [state, opacity]);
 
-    setMinting(true);
-    setError(null);
-
-    const record: MintRecord = {
-      id: Date.now().toString(),
-      token: token.name,
-      amount,
-      time: 'Just now',
-      status: '⏳',
-    };
-    setHistory((prev) => [record, ...prev]);
-
-    try {
-      if (selectedToken === 'sol') {
-        // Request SOL airdrop on devnet
-        const lamports = Math.round(parseFloat(amount) * LAMPORTS_PER_SOL);
-        if (lamports <= 0 || lamports > 2 * LAMPORTS_PER_SOL) {
-          throw new Error('SOL airdrop limited to 0-2 SOL per request');
-        }
-
-        const sig = await connection.requestAirdrop(publicKey, lamports);
-        await connection.confirmTransaction(sig, 'confirmed');
-
-        setHistory((prev) =>
-          prev.map((r) => (r.id === record.id ? { ...r, status: '✓' as const } : r)),
-        );
-
-        Alert.alert('✅ SOL Airdrop', `${amount} SOL sent!\nTx: ${sig.slice(0, 16)}…`);
-        refreshBalance();
-      } else {
-        // USDC on devnet — there's no universal devnet USDC faucet, so we show a helpful message.
-        // In production, this would call a backend faucet endpoint.
-        throw new Error(
-          'Devnet USDC mint requires a faucet backend. Use the API endpoint at /api/faucet or airdrop SOL first.',
-        );
-      }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Mint failed';
-      setError(msg);
-      setHistory((prev) =>
-        prev.map((r) => (r.id === record.id ? { ...r, status: '✗' as const } : r)),
-      );
-    } finally {
-      setMinting(false);
-    }
-  }, [connected, publicKey, selectedToken, amount, token.name]);
+  if (!state) return null;
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <Animated.View
+      style={[
+        toastStyles.container,
+        state.type === 'success' ? toastStyles.success : toastStyles.error,
+        { opacity },
+      ]}
+      pointerEvents="none"
+    >
+      <Text style={toastStyles.text}>{state.message}</Text>
+    </Animated.View>
+  );
+}
+
+const toastStyles = StyleSheet.create({
+  container: {
+    position: 'absolute',
+    top: 16,
+    left: 16,
+    right: 16,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    zIndex: 100,
+  },
+  success: { backgroundColor: GREEN_SUCCESS },
+  error: { backgroundColor: RED_ERROR },
+  text: {
+    color: '#06060C',
+    fontSize: 13,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+});
+
+type AirdropButtonState = 'idle' | 'loading' | 'success';
+
+export function FaucetScreen() {
+  const navigation = useNavigation<any>();
+  const { connected, publicKey, balance, refreshBalance } = useMWA();
+
+  const [airdropState, setAirdropState] = useState<AirdropButtonState>('idle');
+  const [caInput, setCaInput] = useState('');
+  const [mintLoading, setMintLoading] = useState(false);
+  const [toast, setToast] = useState<ToastState>(null);
+  const [inputFocused, setInputFocused] = useState(false);
+
+  const showToast = useCallback((type: 'success' | 'error', message: string) => {
+    setToast({ type, message });
+    setTimeout(() => setToast(null), 3200);
+  }, []);
+
+  const handleAirdrop = useCallback(async () => {
+    if (!connected || !publicKey || airdropState !== 'idle') return;
+    setAirdropState('loading');
+    try {
+      const lamports = 2 * LAMPORTS_PER_SOL;
+      const sig = await connection.requestAirdrop(publicKey, lamports);
+      await connection.confirmTransaction(sig, 'confirmed');
+      setAirdropState('success');
+      refreshBalance();
+      setTimeout(() => setAirdropState('idle'), 2000);
+    } catch (err) {
+      setAirdropState('idle');
+      const msg = err instanceof Error ? err.message : 'Airdrop failed';
+      showToast('error', msg);
+    }
+  }, [connected, publicKey, airdropState, refreshBalance, showToast]);
+
+  const handleMintTokens = useCallback(async () => {
+    if (!caInput.trim() || mintLoading) return;
+    setMintLoading(true);
+    try {
+      // Backend faucet endpoint: POST /api/faucet/mint
+      const resp = await fetch('https://api.percolatorlaunch.com/api/faucet/mint', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mint: caInput.trim(), wallet: publicKey?.toBase58() }),
+      });
+      if (!resp.ok) throw new Error(`Server error: ${resp.status}`);
+      showToast('success', '✓ Test tokens minted!');
+      setCaInput('');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Mint failed';
+      showToast('error', msg);
+    } finally {
+      setMintLoading(false);
+    }
+  }, [caInput, mintLoading, publicKey, showToast]);
+
+  // Airdrop button appearance
+  const airdropBg =
+    airdropState === 'success' ? GREEN_SUCCESS : VIOLET;
+  const airdropTextColor =
+    airdropState === 'success' ? '#06060C' : '#FFFFFF';
+  const airdropLabel =
+    airdropState === 'loading'
+      ? null
+      : airdropState === 'success'
+      ? '✓ 2 SOL Requested'
+      : 'REQUEST SOL AIRDROP';
+
+  const mintDisabled = !caInput.trim() || mintLoading;
+
+  return (
+    <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
+      {/* Toast overlay */}
+      <Toast state={toast} />
+
+      {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>Faucet 🚰</Text>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={styles.backBtn}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+        >
+          <Text style={styles.backArrow}>‹</Text>
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Faucet</Text>
+        <View style={styles.backBtn} />
       </View>
 
-      {error && <ErrorBanner message={error} />}
-
-      {/* Balance */}
-      <Panel style={styles.balancePanel}>
-        <Text style={styles.balanceLabel}>Balance</Text>
-        <Text style={styles.balanceValue}>
-          {connected ? (balance != null ? `${balance.toFixed(4)} SOL` : '—') : 'Connect wallet'}
-        </Text>
-      </Panel>
-
-      {/* Token Selection */}
-      <Text style={styles.sectionLabel}>SELECT TOKEN</Text>
-      <View style={styles.tokenRow}>
-        {TOKENS.map((t) => (
-          <TouchableOpacity
-            key={t.id}
-            style={[styles.tokenCard, selectedToken === t.id && styles.tokenCardActive]}
-            onPress={() => {
-              setSelectedToken(t.id);
-              setAmount(t.defaultAmount);
-            }}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.tokenIcon}>{t.icon}</Text>
-            <Text style={styles.tokenName}>{t.name}</Text>
-            <Text style={styles.tokenDefault}>{t.defaultAmount}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      {/* Amount */}
-      <InputField
-        label="Amount"
-        value={amount}
-        onChangeText={setAmount}
-        keyboardType="decimal-pad"
-        suffix={token.name}
-        style={styles.amountInput}
-      />
-
-      {/* Info */}
-      <View style={styles.infoBanner}>
-        <Text style={styles.infoText}>
-          ⓘ Devnet tokens have no real value. For testing only.
-          {selectedToken === 'sol' ? ' Max 2 SOL per airdrop.' : ''}
-        </Text>
-      </View>
-
-      {/* Mint CTA */}
-      <TouchableOpacity
-        style={[styles.mintBtn, (!connected || minting) && styles.mintBtnDisabled]}
-        activeOpacity={0.8}
-        onPress={handleMint}
-        disabled={!connected || minting}
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
-        {minting ? (
-          <ActivityIndicator color={colors.text} size="small" />
-        ) : (
-          <Text style={styles.mintText}>
-            {selectedToken === 'sol' ? 'Airdrop SOL 💧' : 'Mint Tokens 💧'}
+        {/* ── SECTION 1: SOL BALANCE ── */}
+        <View style={styles.balanceCard}>
+          <Text style={styles.balanceLabel}>YOUR SOL BALANCE</Text>
+          <Text style={styles.balanceValue}>
+            {connected && balance != null
+              ? `${balance.toFixed(2)} SOL`
+              : '0.00 SOL'}
           </Text>
+          <Text style={styles.networkBadge}>Devnet</Text>
+        </View>
+
+        {/* ── SECTION 2: AIRDROP SOL ── */}
+        <View style={styles.section}>
+          <TouchableOpacity
+            style={[
+              styles.airdropBtn,
+              { backgroundColor: airdropBg },
+              (!connected || airdropState !== 'idle') && styles.airdropBtnDisabled,
+            ]}
+            onPress={handleAirdrop}
+            disabled={!connected || airdropState !== 'idle'}
+            activeOpacity={0.85}
+          >
+            {airdropState === 'loading' ? (
+              <ActivityIndicator color="#FFFFFF" size="small" />
+            ) : (
+              <Text style={[styles.airdropBtnText, { color: airdropTextColor }]}>
+                🪂  {airdropLabel}
+              </Text>
+            )}
+          </TouchableOpacity>
+          <Text style={styles.airdropHint}>
+            ~2 SOL per request · Devnet only
+          </Text>
+        </View>
+
+        {/* ── SECTION 3: MINT TOKENS ── */}
+        <View style={styles.section}>
+          <Text style={styles.sectionHeader}>MINT TEST TOKENS</Text>
+
+          <Text style={styles.inputLabel}>Token Contract Address</Text>
+          <TextInput
+            style={[
+              styles.caInput,
+              inputFocused && styles.caInputFocused,
+            ]}
+            value={caInput}
+            onChangeText={setCaInput}
+            placeholder="Enter CA..."
+            placeholderTextColor={TEXT_MUTED}
+            autoCapitalize="none"
+            autoCorrect={false}
+            onFocus={() => setInputFocused(true)}
+            onBlur={() => setInputFocused(false)}
+          />
+
+          <TouchableOpacity
+            style={[
+              styles.mintBtn,
+              mintDisabled && styles.mintBtnDisabled,
+            ]}
+            onPress={handleMintTokens}
+            disabled={mintDisabled}
+            activeOpacity={0.8}
+          >
+            {mintLoading ? (
+              <ActivityIndicator color={ACCENT} size="small" />
+            ) : (
+              <Text style={styles.mintBtnText}>MINT TOKENS</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+
+        {!connected && (
+          <Text style={styles.connectHint}>Connect your wallet to use the faucet.</Text>
         )}
-      </TouchableOpacity>
-
-      {!connected && (
-        <Text style={styles.hint}>Connect your wallet to use the faucet.</Text>
-      )}
-
-      {/* History */}
-      <Text style={[styles.sectionLabel, { marginTop: 24 }]}>RECENT MINTS</Text>
-      {history.length === 0 ? (
-        <Text style={styles.emptyText}>No mints yet</Text>
-      ) : (
-        <FlatList
-          data={history}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <View style={styles.historyRow}>
-              <Text style={styles.historyAmount}>
-                {item.amount} {item.token}
-              </Text>
-              <Text style={styles.historyTime}>{item.time}</Text>
-              <Text style={[styles.historyStatus, item.status === '✗' && { color: colors.short }]}>
-                {item.status}
-              </Text>
-            </View>
-          )}
-        />
-      )}
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  root: {
     flex: 1,
     backgroundColor: colors.bgVoid,
-    padding: 16,
   },
+
+  // Header
   header: {
-    paddingBottom: 16,
-  },
-  title: {
-    fontFamily: fonts.display,
-    fontSize: 18,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  balancePanel: {
+    height: 56,
+    flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 24,
+    paddingHorizontal: 16,
+    justifyContent: 'space-between',
+  },
+  backBtn: {
+    width: 32,
+    justifyContent: 'center',
+    alignItems: 'flex-start',
+  },
+  backArrow: {
+    fontSize: 28,
+    color: TEXT,
+    fontWeight: '300',
+    lineHeight: 32,
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: TEXT,
+    fontFamily: fonts.display,
+  },
+
+  scroll: { flex: 1 },
+  scrollContent: { paddingBottom: 40 },
+
+  // Section 1 — Balance card
+  balanceCard: {
+    marginHorizontal: 16,
+    marginTop: 32,
+    backgroundColor: BG_CARD,
+    borderRadius: 16,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: BORDER,
+    alignItems: 'center',
   },
   balanceLabel: {
-    fontFamily: fonts.body,
-    fontSize: 12,
-    color: colors.textMuted,
+    fontFamily: fonts.display,
+    fontSize: 13,
+    fontWeight: '600',
+    color: TEXT_SECONDARY,
+    textTransform: 'uppercase',
+    letterSpacing: 1.2,
+    marginBottom: 8,
   },
   balanceValue: {
     fontFamily: fonts.mono,
-    fontSize: 24,
+    fontSize: 40,
     fontWeight: '700',
-    color: colors.text,
-    marginTop: 4,
+    color: TEXT,
+    lineHeight: 48,
   },
-  sectionLabel: {
-    fontFamily: fonts.display,
-    fontSize: 11,
-    fontWeight: '600',
-    color: colors.textMuted,
-    letterSpacing: 2,
-    textTransform: 'uppercase',
-    marginBottom: 8,
+  networkBadge: {
+    marginTop: 6,
+    fontSize: 12,
+    fontWeight: '500',
+    color: AMBER,
+    fontFamily: fonts.body,
   },
-  tokenRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 16,
+
+  // Section wrapper
+  section: {
+    marginTop: 24,
+    paddingHorizontal: 16,
   },
-  tokenCard: {
-    flex: 1,
-    height: 80,
-    backgroundColor: colors.bgElevated,
-    borderRadius: radii.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: 'center',
+
+  // Section 2 — Airdrop
+  airdropBtn: {
+    height: 56,
+    borderRadius: 14,
     justifyContent: 'center',
-    gap: 4,
+    alignItems: 'center',
   },
-  tokenCardActive: {
-    borderColor: colors.accent,
-    backgroundColor: colors.accentSubtle,
+  airdropBtnDisabled: {
+    opacity: 0.55,
   },
-  tokenIcon: {
-    fontSize: 24,
-    color: colors.text,
-  },
-  tokenName: {
+  airdropBtnText: {
+    fontSize: 15,
+    fontWeight: '700',
     fontFamily: fonts.display,
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.text,
   },
-  tokenDefault: {
-    fontFamily: fonts.mono,
+  airdropHint: {
+    marginTop: 8,
+    fontSize: 12,
+    color: TEXT_MUTED,
+    textAlign: 'center',
+    fontFamily: fonts.body,
+  },
+
+  // Section 3 — Mint tokens
+  sectionHeader: {
+    fontFamily: fonts.display,
     fontSize: 11,
-    color: colors.textMuted,
-  },
-  amountInput: {
+    fontWeight: '600',
+    color: TEXT_SECONDARY,
+    textTransform: 'uppercase',
+    letterSpacing: 1.5,
     marginBottom: 12,
   },
-  infoBanner: {
-    backgroundColor: colors.cyanMuted,
-    borderRadius: radii.md,
-    padding: 12,
-    marginBottom: 16,
-  },
-  infoText: {
+  inputLabel: {
     fontFamily: fonts.body,
     fontSize: 12,
-    color: colors.cyan,
+    color: TEXT_SECONDARY,
+    marginBottom: 6,
+  },
+  caInput: {
+    height: 52,
+    borderRadius: 12,
+    backgroundColor: BG_INSET,
+    borderWidth: 1,
+    borderColor: BORDER,
+    paddingHorizontal: 16,
+    fontSize: 13,
+    color: TEXT,
+    fontFamily: fonts.mono,
+  },
+  caInputFocused: {
+    borderColor: VIOLET,
   },
   mintBtn: {
-    backgroundColor: colors.accent,
     height: 52,
-    borderRadius: radii.xl,
+    borderRadius: 12,
+    backgroundColor: BG_INSET,
+    borderWidth: 1,
+    borderColor: ACCENT,
     justifyContent: 'center',
     alignItems: 'center',
+    marginTop: 12,
   },
   mintBtnDisabled: {
     opacity: 0.4,
   },
-  mintText: {
+  mintBtnText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: ACCENT,
     fontFamily: fonts.display,
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.text,
   },
-  hint: {
-    fontFamily: fonts.body,
+
+  connectHint: {
+    marginTop: 24,
     fontSize: 13,
-    color: colors.textMuted,
+    color: TEXT_MUTED,
     textAlign: 'center',
-    marginTop: 12,
-  },
-  emptyText: {
     fontFamily: fonts.body,
-    fontSize: 13,
-    color: colors.textMuted,
-    textAlign: 'center',
-    paddingVertical: 16,
-  },
-  historyRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  historyAmount: {
-    fontFamily: fonts.mono,
-    fontSize: 13,
-    color: colors.text,
-    flex: 1,
-  },
-  historyTime: {
-    fontFamily: fonts.body,
-    fontSize: 12,
-    color: colors.textMuted,
-    marginRight: 8,
-  },
-  historyStatus: {
-    fontSize: 14,
-    color: colors.long,
   },
 });

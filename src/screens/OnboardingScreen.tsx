@@ -16,8 +16,8 @@ import { fonts } from '../theme/fonts';
 import { useMWA } from '../hooks/useMWA';
 import { useDemoStore } from '../store/demoStore';
 import { OnboardingSlide, OnboardingSlideData } from '../components/onboarding/OnboardingSlide';
-import { ConnectWalletSheet } from '../components/wallet/ConnectWalletSheet';
-import BottomSheet from '@gorhom/bottom-sheet';
+// GH #87 — ConnectWalletSheet moved to RootNavigator
+// BottomSheet import removed — GH #87 (ConnectWalletSheet now in RootNavigator)
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -69,20 +69,12 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
   const [showWallets, setShowWallets] = useState(false);
   const [connectStep, setConnectStep] = useState<ConnectStep>(null);
   const [connectError, setConnectError] = useState<string | null>(null);
-  const { connect, error: mwaError, showInstallSheet, dismissInstallSheet } = useMWA();
+  const { connect, error: mwaError } = useMWA();
   const enterDemo = useDemoStore((s) => s.enterDemo);
-  const installSheetRef = useRef<BottomSheet>(null);
 
   const isTransitioning = useRef(false);
 
-  // GH #77 — open/close the branded install sheet based on useMWA state
-  React.useEffect(() => {
-    if (showInstallSheet) {
-      installSheetRef.current?.expand();
-    } else {
-      installSheetRef.current?.close();
-    }
-  }, [showInstallSheet]);
+  // GH #87 — ConnectWalletSheet logic moved to RootNavigator (global mount)
 
   // Translate raw MWA errors into user-friendly messages
   React.useEffect(() => {
@@ -236,8 +228,7 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
           </TouchableOpacity>
         </View>
 
-        {/* GH #77 — branded sheet replaces Alert.alert for no-wallet errors */}
-        <ConnectWalletSheet ref={installSheetRef} onDismiss={dismissInstallSheet} />
+        {/* GH #87 — ConnectWalletSheet moved to RootNavigator for global coverage */}
       </SafeAreaView>
     );
   }

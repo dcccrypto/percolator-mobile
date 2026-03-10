@@ -51,12 +51,15 @@ const MOCK_MARKETS = [
   },
 ];
 
+// Raw on-chain values (6 decimals, matching the default decimals in EarnScreen).
+// currentBalance: $120,000 → 120_000 * 10^6 = 120_000_000_000
+// feeRevenue:       $8,500 →   8_500 * 10^6 =   8_500_000_000
 const MOCK_INSURANCE = {
-  currentBalance: 120_000,
-  feeRevenue: 8_500,
+  currentBalance: 120_000_000_000,
+  feeRevenue: 8_500_000_000,
   history: [
-    { timestamp: '2026-03-08T00:00:00Z', balance: 100_000 },
-    { timestamp: '2026-03-09T00:00:00Z', balance: 120_000 },
+    { timestamp: '2026-03-08T00:00:00Z', balance: 100_000_000_000 },
+    { timestamp: '2026-03-09T00:00:00Z', balance: 120_000_000_000 },
   ],
 };
 

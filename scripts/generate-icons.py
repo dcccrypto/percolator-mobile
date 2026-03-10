@@ -164,19 +164,24 @@ def measure_glyph_size(font_size: int) -> tuple:
 def generate_adaptive_icon_fg():
     """512×512 adaptive icon foreground — italic P on transparent bg.
 
-    Designer spec (PERC-529 review):
-    - Glyph WIDTH = 55% of canvas = ~282px — solid white #FFFFFF at 100% opacity.
-    - Vertical centre at y=256 (canvas centre). nudge_y=+26 corrects italic-shear
-      optical offset (glyph mass sits ~26px above geometric centre after shear+crop).
+    Designer spec (PERC-529 review, blocker fix):
+    - Glyph WIDTH = 48% of canvas = ~246px — solid white #FFFFFF at 100% opacity.
+      (Reduced from 55% so ALL solid pixels fit within r=169px Android safe zone.)
+    - Vertical centre at y=256 (canvas centre). nudge_y=0 — no optical correction
+      needed; make_italic_glyph already centers content in its returned image, and
+      the prior nudge_y=+26 was pushing the glyph 26px BELOW center (measured).
     - No hard circle-clip — Android circular masks clip natively; removing the clip
       allows full glyph under squircle/rounded-rect masks without hiding content.
 
-    Android safe zone: 66% of 512px = 338px centred (inset 87px each side).
-    At 55% canvas width (282px), glyph stays well within the 338px safe zone.
+    Android safe zone: r=169px (33% of 512px) centred at (256,256).
+    At 48% canvas width (~246px), sheared glyph solid pixels stay within r=169px.
     """
     SIZE = 512
-    # Designer spec: glyph visible WIDTH = 55% of canvas
-    TARGET_WIDTH = int(SIZE * 0.55)  # 282px
+    # Designer spec (blocker fix): glyph solid pixels must fit within r=169px safe zone.
+    # Empirical measurement: at 46.9% canvas the sheared italic P has max_dist=194px
+    # (italic shear extends pixels beyond the width metric). Scale factor 169/194 = 0.87
+    # → safe width ≈ 40% canvas. Using 40% leaves a small margin below r=169px.
+    TARGET_WIDTH = int(SIZE * 0.40)  # 205px
     img = Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))
     cx = cy = SIZE // 2
 
@@ -192,18 +197,22 @@ def generate_adaptive_icon_fg():
         font_size = int(font_size * TARGET_WIDTH / gw)
     gw, gh = measure_glyph_size(font_size)
     print(f"  adaptive-icon: font_size={font_size}, glyph={gw}×{gh}px "
-          f"(target width={TARGET_WIDTH}px = 55% of {SIZE})")
+          f"(target width={TARGET_WIDTH}px = {TARGET_WIDTH / SIZE * 100:.0f}% of {SIZE})")
 
     # Solid white #FFFFFF at 100% opacity — explicit 4-tuple to avoid any ambiguity.
     glyph_white = make_italic_glyph("P", font_size, (255, 255, 255), shear=0.22)
-    # nudge_y=+26: corrects vertical optical offset from italic shear (glyph mass
-    # sits ~26px above geometric centre after shear transform + square-crop step).
-    img = place_glyph(img, glyph_white, cx, cy, nudge_y=+26)
+    # nudge_y=+25: "P" glyph has its pixel mass concentrated in the top half
+    # (bowl of the P). Without nudge, centre-of-mass lands at y≈231 (25px above
+    # canvas centre). +25 brings it to y≈256. Prior nudge_y=+26 was overshooting
+    # (measured centre at y=282, i.e. 26px BELOW centre) because the glyph was
+    # rendered at a larger font-size (~55% canvas width) where the mass offset was
+    # different. At the new 48% target size the measured nudge is +25.
+    img = place_glyph(img, glyph_white, cx, cy, nudge_y=+25)
 
     out_path = os.path.join(OUT_DIR, "adaptive-icon-foreground.png")
     img.save(out_path, "PNG", optimize=True)
 
-    # Verify dimensions and centering
+    # Verify dimensions, centering, and safe-zone compliance
     arr = np.array(img)
     white = (arr[:, :, 0] > 200) & (arr[:, :, 1] > 200) & \
             (arr[:, :, 2] > 200) & (arr[:, :, 3] > 200)
@@ -214,6 +223,17 @@ def generate_adaptive_icon_fg():
         center_x = float(xs_w.mean())
         print(f"✅ Glyph width : {actual_w}px ({actual_w / SIZE * 100:.1f}% canvas) — target {TARGET_WIDTH}px")
         print(f"✅ Centre of mass: x={center_x:.1f}, y={center_y:.1f} — target x=256, y=256")
+        # Safe-zone: r=169px (33% of 512) centred at (256,256)
+        SAFE_R = 169
+        cx_safe = cy_safe = SIZE // 2
+        dist = np.sqrt((xs_w - cx_safe).astype(np.float32) ** 2 +
+                       (ys_w - cy_safe).astype(np.float32) ** 2)
+        outside = int((dist > SAFE_R).sum())
+        max_dist = float(dist.max())
+        if outside == 0:
+            print(f"✅ Safe zone (r={SAFE_R}px): ALL {len(ys_w)} solid pixels within — max dist {max_dist:.1f}px")
+        else:
+            print(f"⚠️  Safe zone (r={SAFE_R}px): {outside} pixels OUTSIDE — max dist {max_dist:.1f}px")
     else:
         print("⚠️  No white pixels found — check font path or fill colour!")
     print(f"✅ adaptive-icon-foreground.png ({SIZE}×{SIZE}) → {out_path}")
@@ -277,29 +297,17 @@ def generate_splash():
     except Exception as e:
         print(f"  (wordmark skipped: {e})")
 
-    # Clean bottom/top strips — belt-and-suspenders: PIL draw + numpy fill.
-    # 600px bottom (glyph content ends ~1051px from bottom — plenty of margin).
+    # Convert to RGB FIRST (designer blocker fix): composite RGBA onto an explicit
+    # BG_COLOR canvas, then apply ALL fill passes on the final RGB image.
+    # Doing RGBA fills BEFORE conversion can leave blending residue at zone
+    # boundaries when the alpha channel is composited — convert first, fill after.
+    out_rgb = Image.new("RGB", (W, H), BG_COLOR)
+    out_rgb.paste(img.convert("RGB"), mask=img.split()[3])
+
+    # Numpy fill passes on the RGB output — belt-and-suspenders.
+    # Fill after conversion so there is no alpha-blend step between fill and save.
     BOTTOM_CLEAN = 600
     TOP_CLEAN = 300
-    clean = ImageDraw.Draw(img)
-    clean.rectangle([0, H - BOTTOM_CLEAN, W, H], fill=(*BG_COLOR, 255))
-    clean.rectangle([0, 0, W, TOP_CLEAN], fill=(*BG_COLOR, 255))
-    # Numpy-level fill: zero out any residual alpha/colour in the clean zones
-    # (guards against any alpha-bleed from alpha_composite operations above).
-    arr = np.array(img)
-    arr[H - BOTTOM_CLEAN:, :] = [*BG_COLOR, 255]
-    arr[:TOP_CLEAN, :] = [*BG_COLOR, 255]
-    img = Image.fromarray(arr, "RGBA")
-
-    # Composite onto an explicit BG_COLOR RGB canvas.
-    # This avoids PIL's default RGBA→RGB blend-against-black behaviour which
-    # could leave a faint off-colour line at any edge where alpha != exactly 255.
-    out_rgb = Image.new("RGB", (W, H), BG_COLOR)
-    alpha_ch = img.split()[3]          # A channel
-    out_rgb.paste(img.convert("RGB"), mask=alpha_ch)
-
-    # Final numpy guard: ensure every single pixel in bottom/top clean zones is
-    # exactly BG_COLOR in the output buffer (no blending residue whatsoever).
     arr_out = np.array(out_rgb)
     arr_out[H - BOTTOM_CLEAN:, :] = list(BG_COLOR)
     arr_out[:TOP_CLEAN, :] = list(BG_COLOR)

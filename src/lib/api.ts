@@ -180,7 +180,15 @@ export const api = {
 
   /** Get insurance fund data */
   async getInsurance(slab: string): Promise<InsuranceData> {
-    return fetchJSON(`${API_BASE}/insurance/${slab}`);
+    const raw = await fetchJSON<InsuranceData>(`${API_BASE}/insurance/${slab}`);
+    // API returns e6 micro-units — convert to whole USD/token units
+    return {
+      ...raw,
+      currentBalance: raw.currentBalance / 1_000_000,
+      feeRevenue: raw.feeRevenue / 1_000_000,
+      totalOpenInterest: raw.totalOpenInterest / 1_000_000,
+      history: raw.history.map((h) => ({ ...h, balance: h.balance / 1_000_000 })),
+    };
   },
 
   /** Get platform aggregate stats */

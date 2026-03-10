@@ -39,7 +39,7 @@ interface TokenMeta {
   initial_price_e6: string;
 }
 
-type WizardStep = 'mint' | 'tier' | 'review' | 'deploying' | 'done';
+type WizardStep = 'mint' | 'tier' | 'oracle' | 'liquidity' | 'review' | 'deploying' | 'done';
 
 /* ── Tier config ─────────────────────────────────────────────────── */
 
@@ -54,21 +54,21 @@ interface TierOption {
 const TIER_OPTIONS: TierOption[] = [
   {
     key: 'small',
-    label: 'Micro',
+    label: 'Small',
     maxAccounts: 256,
     rentSol: '~0.44',
     desc: 'Great for testing. 256 max trader accounts.',
   },
   {
     key: 'medium',
-    label: 'Standard',
+    label: 'Medium',
     maxAccounts: 1024,
     rentSol: '~1.8',
     desc: 'Mid-scale markets. 1,024 max trader accounts.',
   },
   {
     key: 'large',
-    label: 'Pro',
+    label: 'Large',
     maxAccounts: 4096,
     rentSol: '~7',
     desc: 'Full production scale. 4,096 max trader accounts.',
@@ -76,7 +76,7 @@ const TIER_OPTIONS: TierOption[] = [
 ];
 
 const WEB_API_BASE =
-  process.env.EXPO_PUBLIC_WEB_URL ?? 'https://percolatorlaunch.com/api';
+  process.env.EXPO_PUBLIC_API_URL ?? 'https://percolator-api-production.up.railway.app/api';
 
 /* ── Step progress bar ───────────────────────────────────────────── */
 
@@ -275,19 +275,20 @@ export function MarketCreationScreen() {
       <View style={styles.header}>
         <Text style={styles.title}>Create Market</Text>
         <View style={styles.stepIndicator}>
-          {(['mint', 'tier', 'review'] as const).map((s, i) => (
-            <View
-              key={s}
-              style={[
-                styles.stepDot,
-                wizardStep === s && styles.stepDotActive,
-                (wizardStep === 'tier' && i < 1) ||
-                (wizardStep === 'review' && i < 2)
-                  ? styles.stepDotDone
-                  : null,
-              ]}
-            />
-          ))}
+          {(['mint', 'tier', 'oracle', 'liquidity', 'review'] as const).map((s, i) => {
+            const steps: WizardStep[] = ['mint', 'tier', 'oracle', 'liquidity', 'review'];
+            const currentIdx = steps.indexOf(wizardStep as any);
+            return (
+              <View
+                key={s}
+                style={[
+                  styles.stepDot,
+                  wizardStep === s && styles.stepDotActive,
+                  currentIdx > i ? styles.stepDotDone : null,
+                ]}
+              />
+            );
+          })}
         </View>
       </View>
 
@@ -444,6 +445,82 @@ export function MarketCreationScreen() {
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.primaryBtn, styles.primaryBtnFlex]}
+                onPress={() => setWizardStep('oracle')}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.primaryBtnText}>Next →</Text>
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
+
+        {/* ── Step 3: Oracle ─────────────────────────────────── */}
+        {wizardStep === 'oracle' && (
+          <>
+            <Text style={styles.sectionTitle}>Oracle Setup</Text>
+            <Panel style={styles.reviewPanel}>
+              <ReviewRow
+                label="Oracle mode"
+                value={tokenMeta?.oracle_mode === 'hyperp' ? 'DEX Pool (HyperP)' : 'Admin (devnet)'}
+              />
+              {tokenMeta?.dex_pool_address && (
+                <ReviewRow
+                  label="Pool address"
+                  value={`${tokenMeta.dex_pool_address.slice(0, 8)}…${tokenMeta.dex_pool_address.slice(-6)}`}
+                />
+              )}
+              <Text style={styles.oracleHint}>
+                {tokenMeta?.oracle_mode === 'hyperp'
+                  ? '✓ DEX pool detected — oracle will auto-update from on-chain liquidity.'
+                  : 'No DEX pool found. Oracle will use admin-set prices (devnet only).'}
+              </Text>
+            </Panel>
+            <View style={styles.navRow}>
+              <TouchableOpacity
+                style={styles.secondaryBtn}
+                onPress={() => setWizardStep('tier')}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.secondaryBtnText}>← Back</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.primaryBtn, styles.primaryBtnFlex]}
+                onPress={() => setWizardStep('liquidity')}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.primaryBtnText}>Next →</Text>
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
+
+        {/* ── Step 4: Liquidity ──────────────────────────────── */}
+        {wizardStep === 'liquidity' && (
+          <>
+            <Text style={styles.sectionTitle}>Initial Liquidity</Text>
+            <Panel style={styles.reviewPanel}>
+              <ReviewRow label="Vault seed deposit" value="500 tokens" />
+              <ReviewRow label="LP collateral" value="1,000 tokens" />
+              <ReviewRow label="Insurance deposit" value="100 tokens" />
+              <ReviewRow
+                label="Slab rent"
+                value={`${TIER_OPTIONS.find((t) => t.key === selectedTier)?.rentSol ?? '?'} SOL`}
+              />
+            </Panel>
+            <Text style={styles.oracleHint}>
+              These amounts will be deducted from your wallet during deployment.
+              Ensure your wallet has sufficient balance.
+            </Text>
+            <View style={styles.navRow}>
+              <TouchableOpacity
+                style={styles.secondaryBtn}
+                onPress={() => setWizardStep('oracle')}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.secondaryBtnText}>← Back</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.primaryBtn, styles.primaryBtnFlex]}
                 onPress={() => setWizardStep('review')}
                 activeOpacity={0.8}
               >
@@ -453,13 +530,13 @@ export function MarketCreationScreen() {
           </>
         )}
 
-        {/* ── Step 3: Review & deploy ────────────────────────── */}
+        {/* ── Step 5: Review & deploy ────────────────────────── */}
         {wizardStep === 'review' && (
           <>
             <Text style={styles.sectionTitle}>Review & Deploy</Text>
 
             <Panel style={styles.reviewPanel}>
-              <ReviewRow label="Market name" value={marketName} />
+              <ReviewRow label="Market name" value={marketName || tokenMeta?.name || mintInput.slice(0, 12)} />
               <ReviewRow
                 label="Mint"
                 value={`${mintInput.slice(0, 8)}…${mintInput.slice(-6)}`}
@@ -510,7 +587,7 @@ export function MarketCreationScreen() {
 
             <TouchableOpacity
               style={[styles.secondaryBtn, { alignSelf: 'center' }]}
-              onPress={() => setWizardStep('tier')}
+              onPress={() => setWizardStep('liquidity')}
               activeOpacity={0.8}
             >
               <Text style={styles.secondaryBtnText}>← Back</Text>
@@ -715,6 +792,15 @@ const styles = StyleSheet.create({
     lineHeight: 17,
   },
 
+  oracleHint: {
+    fontFamily: fonts.body,
+    fontSize: 13,
+    color: colors.textSecondary ?? '#8888AA',
+    lineHeight: 18,
+    marginTop: 8,
+    paddingHorizontal: 4,
+  },
+
   /* Deploy progress */
   progressContainer: { gap: 12, paddingVertical: 8 },
   progressRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
@@ -811,4 +897,5 @@ const styles = StyleSheet.create({
   },
 
   navRow: { flexDirection: 'row', gap: 10 },
+  btnRow: { flexDirection: 'row', gap: 10, marginTop: 16 },
 });

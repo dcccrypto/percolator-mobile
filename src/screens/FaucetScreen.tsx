@@ -135,8 +135,9 @@ export function FaucetScreen() {
     if (!caInput.trim() || mintLoading) return;
     setMintLoading(true);
     try {
-      // Backend faucet endpoint: POST /api/faucet/mint
-      const resp = await fetch('https://api.percolatorlaunch.com/api/faucet/mint', {
+      // Backend faucet endpoint: POST /api/faucet/mint (Railway direct URL)
+      const apiBase = process.env.EXPO_PUBLIC_API_URL ?? 'https://percolator-api-production.up.railway.app';
+      const resp = await fetch(`${apiBase}/api/faucet/mint`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mint: caInput.trim(), wallet: publicKey?.toBase58() }),

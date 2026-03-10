@@ -33,3 +33,4 @@ ios/build/
 *.apk
 *.aab
 *.ipa
+__pycache__/

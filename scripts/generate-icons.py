@@ -23,7 +23,12 @@ TEXT     = (225, 226, 232)       # #E1E2E8
 
 def radial_glow(img: Image.Image, cx: int, cy: int, radius: int,
                 color: tuple, alpha: float) -> Image.Image:
-    """Overlay a smooth per-pixel radial gradient glow (no banding)."""
+    """Overlay a smooth per-pixel radial gradient glow (no banding).
+
+    Uses numpy to compute distance from (cx, cy) for every pixel, then maps
+    distance → alpha via a smooth power curve.  This avoids the concentric-
+    ellipse stepping artifact that produced horizontal banding in earlier code.
+    """
     w, h = img.size
     ys, xs = np.mgrid[0:h, 0:w]
     dist = np.sqrt((xs - cx).astype(np.float32) ** 2 +
@@ -43,30 +48,42 @@ def radial_glow(img: Image.Image, cx: int, cy: int, radius: int,
 
 def make_italic_glyph(char: str, font_size: int, fg_color: tuple,
                       shear: float = 0.22, pad: int = 20) -> Image.Image:
-    """Render `char` in JetBrains Mono Bold Italic, apply shear for strong italic look."""
+    """
+    Render `char` in JetBrains Mono Bold Italic, apply shear for strong italic look.
+    Returns a tightly-cropped RGBA image of just the glyph (with `pad` px border).
+    `place_glyph` then centres this on any canvas correctly.
+    """
     font = ImageFont.truetype(FONT_PATH, font_size)
 
+    # Measure glyph
     tmp_draw = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
     bbox = tmp_draw.textbbox((0, 0), char, font=font)
     gw = bbox[2] - bbox[0]
     gh = bbox[3] - bbox[1]
 
+    # Oversized canvas to avoid clipping during shear
     shear_extra = int(abs(shear) * gh) + pad * 2
     canvas_w = gw + shear_extra * 2 + pad * 2
     canvas_h = gh + pad * 2
 
+    # Render glyph in the centre of the oversized canvas
     layer = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
     d = ImageDraw.Draw(layer)
     x0 = canvas_w // 2 - gw // 2 - bbox[0]
     y0 = pad - bbox[1]
-    d.text((x0, y0), char, font=font, fill=(*fg_color,))
+    d.text((x0, y0), char, font=font, fill=(*fg_color, 255))
 
+    # Apply italic shear (lean right: top of glyph moves right)
+    # x_src = x_dst + shear * y_dst - shear * canvas_h
     data = (1, shear, -shear * canvas_h, 0, 1, 0)
     layer = layer.transform(layer.size, Image.AFFINE, data, resample=Image.BICUBIC)
 
+    # Auto-crop to non-transparent bounding box then make square with equal padding
+    # so geometric centre == optical centre
     content_box = layer.getbbox()
     if content_box:
         layer = layer.crop(content_box)
+        # Make the cropped glyph square (largest dimension + 2*pad) so centering is trivial
         w, h = layer.size
         side = max(w, h) + pad * 2
         square = Image.new("RGBA", (side, side), (0, 0, 0, 0))
@@ -78,7 +95,8 @@ def make_italic_glyph(char: str, font_size: int, fg_color: tuple,
 
 def place_glyph(canvas: Image.Image, glyph: Image.Image, cx: int, cy: int,
                 nudge_x: int = 0, nudge_y: int = 0) -> Image.Image:
-    """Paste `glyph` (RGBA) centred at (cx, cy) on `canvas`, return composite."""
+    """Paste `glyph` (RGBA) centred at (cx, cy) on `canvas`, return composite.
+    nudge_x/nudge_y allow optical correction (positive = right/down)."""
     gw, gh = glyph.size
     x = cx - gw // 2 + nudge_x
     y = cy - gh // 2 + nudge_y
@@ -92,33 +110,46 @@ def place_glyph(canvas: Image.Image, glyph: Image.Image, cx: int, cy: int,
 # ---------------------------------------------------------------------------
 
 def generate_app_icon():
-    """1024x1024 app icon."""
+    """1024×1024 app icon."""
     SIZE = 1024
     img = Image.new("RGBA", (SIZE, SIZE), (*BG_COLOR, 255))
     cx = cy = SIZE // 2
 
+    # Background glow — boosted for vivid #9945FF
     img = radial_glow(img, cx, cy, 360, ACCENT, 0.40)
 
+    # Inner ring
     d = ImageDraw.Draw(img)
     m = (SIZE - 960) // 2
     d.rounded_rectangle([m, m, SIZE - m, SIZE - m], radius=240,
                         outline=(*ACCENT, 51), width=1)
 
+    # Italic optical nudge: ~3% canvas right to compensate for shear lean
     nx = int(SIZE * 0.015)
+    # Glyph glow (blurred purple P behind white P) — double layer for vivid #9945FF
     font_size = 480
     glyph_glow = make_italic_glyph("P", font_size, (*ACCENT,), shear=0.22)
     glyph_glow_blur = glyph_glow.filter(ImageFilter.GaussianBlur(radius=40))
     img = place_glyph(img, glyph_glow_blur, cx, cy, nudge_x=nx)
+    # Second glow pass — tighter, brighter to push colour toward true #9945FF
     glyph_glow2 = make_italic_glyph("P", font_size, (*ACCENT,), shear=0.22)
     glyph_glow2 = glyph_glow2.filter(ImageFilter.GaussianBlur(radius=18))
     img = place_glyph(img, glyph_glow2, cx, cy, nudge_x=nx)
 
+    # Sharp white P on top
     glyph_white = make_italic_glyph("P", font_size, (*TEXT,), shear=0.22)
     img = place_glyph(img, glyph_white, cx, cy, nudge_x=nx)
 
     out_path = os.path.join(OUT_DIR, "icon.png")
     img.convert("RGB").save(out_path, "PNG", optimize=True)
-    print(f"  icon.png ({SIZE}x{SIZE}) -> {out_path}")
+    print(f"✅ icon.png ({SIZE}×{SIZE}) → {out_path}")
+
+
+def measure_glyph_width(font_size: int) -> int:
+    """Return the actual rendered sheared width of the P glyph at given font size."""
+    glyph = make_italic_glyph("P", font_size, (255, 255, 255), shear=0.22)
+    bbox = glyph.getbbox()
+    return (bbox[2] - bbox[0]) if bbox else 0
 
 
 def measure_glyph_size(font_size: int) -> tuple:
@@ -131,60 +162,69 @@ def measure_glyph_size(font_size: int) -> tuple:
 
 
 def generate_adaptive_icon_fg():
-    """512x512 adaptive icon foreground — opaque dark bg + glow + white P.
+    """512×512 adaptive icon foreground — italic P on transparent bg.
 
-    Previous version used transparent bg with white-only P, which was invisible
-    on light launcher backgrounds (designer BLOCKER). Now uses opaque foreground
-    with its own dark background + purple glow, matching the app icon style.
+    Designer spec (PERC-529 review):
+    - Glyph WIDTH = 55% of canvas = ~282px — solid white #FFFFFF at 100% opacity.
+    - Vertical centre at y=256 (canvas centre). nudge_y=+26 corrects italic-shear
+      optical offset (glyph mass sits ~26px above geometric centre after shear+crop).
+    - No hard circle-clip — Android circular masks clip natively; removing the clip
+      allows full glyph under squircle/rounded-rect masks without hiding content.
 
-    Android safe zone: 66% of 512px = 338px centred, inset 87px each edge.
-    Glyph scaled to fit within safe zone for circular/squircle masks.
+    Android safe zone: 66% of 512px = 338px centred (inset 87px each side).
+    At 55% canvas width (282px), glyph stays well within the 338px safe zone.
     """
     SIZE = 512
-    SAFE_INSET = 87
-    SAFE_SIZE = SIZE - 2 * SAFE_INSET   # 338px
-    MAX_GLYPH_DIM = int((SAFE_SIZE // 2) * 2 * 0.73)  # ~247px
+    # Designer spec: glyph visible WIDTH = 55% of canvas
+    TARGET_WIDTH = int(SIZE * 0.55)  # 282px
+    img = Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))
     cx = cy = SIZE // 2
 
-    # Opaque dark background with radial purple glow
-    img = Image.new("RGBA", (SIZE, SIZE), (*BG_COLOR, 255))
-    img = radial_glow(img, cx, cy, 180, ACCENT, 0.40)
-
-    # Auto-scale font_size to fit within safe zone
-    font_size = 280
-    for _ in range(8):
+    # Auto-scale font_size so glyph WIDTH (not max dimension) ≈ TARGET_WIDTH.
+    # P's width is narrower than height, so we iterate on width specifically.
+    font_size = 320
+    for _ in range(10):
         gw, gh = measure_glyph_size(font_size)
-        largest = max(gw, gh)
-        if largest == 0 or abs(largest - MAX_GLYPH_DIM) <= 3:
+        if gw == 0:
             break
-        font_size = int(font_size * MAX_GLYPH_DIM / largest)
+        if abs(gw - TARGET_WIDTH) <= 3:
+            break
+        font_size = int(font_size * TARGET_WIDTH / gw)
     gw, gh = measure_glyph_size(font_size)
-    print(f"  adaptive-icon: font_size={font_size}, glyph={gw}x{gh}px "
-          f"(safe zone {SAFE_SIZE}px, max_dim={MAX_GLYPH_DIM}px)")
+    print(f"  adaptive-icon: font_size={font_size}, glyph={gw}×{gh}px "
+          f"(target width={TARGET_WIDTH}px = 55% of {SIZE})")
 
-    while max(gw, gh) > SAFE_SIZE - 20 and font_size > 100:
-        font_size = int(font_size * 0.90)
-        gw, gh = measure_glyph_size(font_size)
-
-    # Purple glow behind P (two passes: wide soft + tight bright)
-    glyph_glow = make_italic_glyph("P", font_size, (*ACCENT,), shear=0.22)
-    glyph_glow = glyph_glow.filter(ImageFilter.GaussianBlur(radius=18))
-    img = place_glyph(img, glyph_glow, cx, cy)
-    glyph_glow2 = make_italic_glyph("P", font_size, (*ACCENT,), shear=0.22)
-    glyph_glow2 = glyph_glow2.filter(ImageFilter.GaussianBlur(radius=8))
-    img = place_glyph(img, glyph_glow2, cx, cy)
-
-    # Solid white #FFFFFF P on top (bold italic, designer spec)
+    # Solid white #FFFFFF at 100% opacity — explicit 4-tuple to avoid any ambiguity.
     glyph_white = make_italic_glyph("P", font_size, (255, 255, 255), shear=0.22)
-    img = place_glyph(img, glyph_white, cx, cy)
+    # nudge_y=+26: corrects vertical optical offset from italic shear (glyph mass
+    # sits ~26px above geometric centre after shear transform + square-crop step).
+    img = place_glyph(img, glyph_white, cx, cy, nudge_y=+26)
 
     out_path = os.path.join(OUT_DIR, "adaptive-icon-foreground.png")
-    img.convert("RGBA").save(out_path, "PNG", optimize=True)
-    print(f"  adaptive-icon-foreground.png ({SIZE}x{SIZE}) -> {out_path}")
+    img.save(out_path, "PNG", optimize=True)
+
+    # Verify dimensions and centering
+    arr = np.array(img)
+    white = (arr[:, :, 0] > 200) & (arr[:, :, 1] > 200) & \
+            (arr[:, :, 2] > 200) & (arr[:, :, 3] > 200)
+    ys_w, xs_w = np.where(white)
+    if len(ys_w) > 0:
+        actual_w = int(xs_w.max() - xs_w.min())
+        center_y = float(ys_w.mean())
+        center_x = float(xs_w.mean())
+        print(f"✅ Glyph width : {actual_w}px ({actual_w / SIZE * 100:.1f}% canvas) — target {TARGET_WIDTH}px")
+        print(f"✅ Centre of mass: x={center_x:.1f}, y={center_y:.1f} — target x=256, y=256")
+    else:
+        print("⚠️  No white pixels found — check font path or fill colour!")
+    print(f"✅ adaptive-icon-foreground.png ({SIZE}×{SIZE}) → {out_path}")
 
 
 def generate_adaptive_icon_bg():
-    """512x512 adaptive icon background — #0D0D0F + radial #9945FF glow."""
+    """512×512 adaptive icon background — #0D0D0F + radial #9945FF glow.
+
+    Glow lives here (not on the foreground) so FG is pure white P on transparent —
+    no shadow visible on any launcher background colour.
+    """
     SIZE = 512
     cx = cy = SIZE // 2
     img = Image.new("RGBA", (SIZE, SIZE), (*BG_COLOR, 255))
@@ -192,15 +232,16 @@ def generate_adaptive_icon_bg():
     img = radial_glow(img, cx, cy, 240, ACCENT, 0.15)
     img.convert("RGB").save(
         os.path.join(OUT_DIR, "adaptive-icon-background.png"), "PNG")
-    print(f"  adaptive-icon-background.png ({SIZE}x{SIZE})")
+    print(f"✅ adaptive-icon-background.png ({SIZE}×{SIZE})")
 
 
 def generate_splash():
-    """1242x2688 splash screen."""
+    """1242×2688 splash screen."""
     W, H = 1242, 2688
     img = Image.new("RGBA", (W, H), (*BG_COLOR, 255))
     cx, cy = W // 2, H // 2 - 100
 
+    # Two-layer radial glow — radii kept well within canvas to prevent edge artifacts
     img = radial_glow(img, cx, cy, 350, ACCENT, 0.32)
     img = radial_glow(img, cx, cy, 500, ACCENT, 0.10)
 
@@ -215,7 +256,7 @@ def generate_splash():
     glyph_white = make_italic_glyph("P", font_size, (*TEXT,), shear=0.22)
     img = place_glyph(img, glyph_white, cx, cy, nudge_x=nx)
 
-    # Wordmark "PERCOLATOR" — white for better contrast (designer feedback)
+    # Wordmark "PERCOLATOR" (upright, not italic — matches brand wordmark style)
     try:
         font = ImageFont.truetype(FONT_PATH, 90)
         word = "PERCOLATOR"
@@ -225,17 +266,20 @@ def generate_splash():
         wd = ImageDraw.Draw(word_layer)
         wx = cx - (bb[2] - bb[0]) // 2 - bb[0]
         wy = cy + font_size // 2 + 40
-        wd.text((wx, wy), word, font=font, fill=(255, 255, 255, 230))
+        wd.text((wx, wy), word, font=font, fill=(*TEXT, 200))
         img = Image.alpha_composite(img, word_layer)
     except Exception as e:
         print(f"  (wordmark skipped: {e})")
 
-    # Clean bottom/top strips to remove any artifacts
+    # Clean bottom/top strips — belt-and-suspenders: PIL draw + numpy fill.
+    # 600px bottom (glyph content ends ~1051px from bottom — plenty of margin).
     BOTTOM_CLEAN = 600
     TOP_CLEAN = 300
     clean = ImageDraw.Draw(img)
     clean.rectangle([0, H - BOTTOM_CLEAN, W, H], fill=(*BG_COLOR, 255))
     clean.rectangle([0, 0, W, TOP_CLEAN], fill=(*BG_COLOR, 255))
+    # Numpy-level fill: zero out any residual alpha/colour in the clean zones
+    # (guards against any alpha-bleed from alpha_composite operations above).
     arr = np.array(img)
     arr[H - BOTTOM_CLEAN:, :] = [*BG_COLOR, 255]
     arr[:TOP_CLEAN, :] = [*BG_COLOR, 255]
@@ -243,14 +287,14 @@ def generate_splash():
 
     out_path = os.path.join(OUT_DIR, "splash.png")
     img.convert("RGB").save(out_path, "PNG", optimize=True)
-    print(f"  splash.png ({W}x{H}) -> {out_path}")
+    print(f"✅ splash.png ({W}×{H}) → {out_path}")
 
 
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
-    print("Generating Percolator app icons (PERC-529)...")
+    print("🔨 Generating Percolator app icons (PERC-529)...")
     generate_app_icon()
     generate_adaptive_icon_fg()
     generate_adaptive_icon_bg()
     generate_splash()
-    print("Done.")
+    print("🎉 Done.")

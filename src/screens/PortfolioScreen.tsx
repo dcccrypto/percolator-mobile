@@ -24,6 +24,7 @@ import { PositionDetailSheet } from '../components/trade/PositionDetailSheet';
 import { useMWA } from '../hooks/useMWA';
 import { usePositions, type Position } from '../hooks/usePositions';
 import { useTrade } from '../hooks/useTrade';
+import { ConnectWalletSheet } from '../components/wallet/ConnectWalletSheet';
 
 function PositionCard({
   position,
@@ -217,19 +218,22 @@ function EmptyOrders() {
 
 export function PortfolioScreen() {
   const [tab, setTab] = useState<'open' | 'history' | 'orders'>('open');
-  const { connected, publicKey, connect, error: mwaError } = useMWA();
+  const { connected, publicKey, connect, showInstallSheet, dismissInstallSheet } = useMWA();
   const navigation = useNavigation<any>();
-
-  // Show wallet connection errors to the user (#66)
-  useEffect(() => {
-    if (mwaError) Alert.alert('Wallet Error', mwaError);
-  }, [mwaError]);
   const { submitTrade, submitting } = useTrade();
   const setOpenPositionCount = usePositionStore((s) => s.setOpenPositionCount);
 
   // Bottom sheet refs
   const detailSheetRef = useRef<BottomSheet>(null);
   const closeSheetRef = useRef<BottomSheet>(null);
+  const installSheetRef = useRef<BottomSheet>(null);
+
+  // Open the branded ConnectWalletSheet when no wallet is installed (GH #87)
+  useEffect(() => {
+    if (showInstallSheet) {
+      installSheetRef.current?.expand();
+    }
+  }, [showInstallSheet]);
   const [selectedPosition, setSelectedPosition] = useState<Position | null>(null);
 
   const { positions, loading, error, refresh } = usePositions(
@@ -420,6 +424,9 @@ export function PortfolioScreen() {
         submitting={submitting}
         onClose={handlePartialClose}
       />
+
+      {/* Branded wallet install sheet — shown when no MWA wallet found (GH #87) */}
+      <ConnectWalletSheet ref={installSheetRef} onDismiss={dismissInstallSheet} />
     </SafeAreaView>
     </GestureHandlerRootView>
   );

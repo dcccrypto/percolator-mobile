@@ -136,7 +136,9 @@ export function FaucetScreen() {
     setMintLoading(true);
     try {
       // Backend faucet endpoint: POST /api/faucet/mint
-      const resp = await fetch('https://api.percolatorlaunch.com/api/faucet/mint', {
+      // Use the same env-var base as MarketCreationScreen so Railway URL is respected.
+      const API_BASE = process.env.EXPO_PUBLIC_WEB_URL ?? 'https://percolatorlaunch.com/api';
+      const resp = await fetch(`${API_BASE}/faucet/mint`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mint: caInput.trim(), wallet: publicKey?.toBase58() }),

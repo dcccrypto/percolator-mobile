@@ -39,7 +39,9 @@ interface TokenMeta {
   initial_price_e6: string;
 }
 
-type WizardStep = 'mint' | 'tier' | 'review' | 'deploying' | 'done';
+// BUG-5 fix: 5-step wizard matching web flow.
+// Steps: mint → tier → oracle → review → (deploying) → done
+type WizardStep = 'mint' | 'tier' | 'oracle' | 'review' | 'deploying' | 'done';
 
 /* ── Tier config ─────────────────────────────────────────────────── */
 
@@ -51,24 +53,25 @@ interface TierOption {
   desc: string;
 }
 
+// BUG-3 fix: tier labels must match the web wizard (Small / Medium / Large).
 const TIER_OPTIONS: TierOption[] = [
   {
     key: 'small',
-    label: 'Micro',
+    label: 'Small',
     maxAccounts: 256,
     rentSol: '~0.44',
     desc: 'Great for testing. 256 max trader accounts.',
   },
   {
     key: 'medium',
-    label: 'Standard',
+    label: 'Medium',
     maxAccounts: 1024,
     rentSol: '~1.8',
     desc: 'Mid-scale markets. 1,024 max trader accounts.',
   },
   {
     key: 'large',
-    label: 'Pro',
+    label: 'Large',
     maxAccounts: 4096,
     rentSol: '~7',
     desc: 'Full production scale. 4,096 max trader accounts.',
@@ -180,8 +183,12 @@ export function MarketCreationScreen() {
           initial_price_e6: cfg.initialPriceE6 ?? '1000000',
         };
         setTokenMeta(meta);
-        if (!marketName || marketName === tokenMeta?.name) {
-          setMarketName(`${meta.symbol}-PERP`);
+        // BUG-4: guard against auto-populating with a raw mint address or junk.
+        // A valid ticker starts with a letter and is short (≤12 chars).
+        const symbolOk = /^[A-Za-z][A-Za-z0-9]{0,11}$/.test(meta.symbol ?? '');
+        const safeSymbol = symbolOk ? meta.symbol : 'UNKNOWN';
+        if (!marketName || marketName === tokenMeta?.name || marketName === tokenMeta?.symbol) {
+          setMarketName(`${safeSymbol}-PERP`);
         }
       } catch (e) {
         setMetaError(e instanceof Error ? e.message : 'Failed to fetch token info');
@@ -274,20 +281,24 @@ export function MarketCreationScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <Text style={styles.title}>Create Market</Text>
+        {/* BUG-5: 5-step indicator matching web (mint → tier → oracle → review → deploy) */}
         <View style={styles.stepIndicator}>
-          {(['mint', 'tier', 'review'] as const).map((s, i) => (
-            <View
-              key={s}
-              style={[
-                styles.stepDot,
-                wizardStep === s && styles.stepDotActive,
-                (wizardStep === 'tier' && i < 1) ||
-                (wizardStep === 'review' && i < 2)
-                  ? styles.stepDotDone
-                  : null,
-              ]}
-            />
-          ))}
+          {(['mint', 'tier', 'oracle', 'review', 'deploying'] as const).map((s, i) => {
+            const STEPS = ['mint', 'tier', 'oracle', 'review', 'deploying'];
+            const currentIdx = STEPS.indexOf(wizardStep);
+            const isDone = i < currentIdx;
+            const isActive = s === wizardStep;
+            return (
+              <View
+                key={s}
+                style={[
+                  styles.stepDot,
+                  isActive && styles.stepDotActive,
+                  isDone && styles.stepDotDone,
+                ]}
+              />
+            );
+          })}
         </View>
       </View>
 
@@ -358,24 +369,15 @@ export function MarketCreationScreen() {
               </Panel>
             )}
 
-            <InputField
-              label="Market Name"
-              value={marketName}
-              onChangeText={setMarketName}
-              placeholder="e.g. SOL-PERP"
-              autoCapitalize="characters"
-              autoCorrect={false}
-              maxLength={64}
-            />
+            {/* BUG-4 fix: market name moved to oracle step so it can't show as mint addr */}
 
             <TouchableOpacity
               style={[
                 styles.primaryBtn,
-                (!mintInput.trim() || !marketName.trim() || metaLoading) &&
-                  styles.primaryBtnDisabled,
+                (!mintInput.trim() || metaLoading) && styles.primaryBtnDisabled,
               ]}
               onPress={() => setWizardStep('tier')}
-              disabled={!mintInput.trim() || !marketName.trim() || metaLoading}
+              disabled={!mintInput.trim() || metaLoading}
               activeOpacity={0.8}
             >
               <Text style={styles.primaryBtnText}>Next: Choose Tier →</Text>
@@ -444,7 +446,67 @@ export function MarketCreationScreen() {
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.primaryBtn, styles.primaryBtnFlex]}
+                onPress={() => setWizardStep('oracle')}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.primaryBtnText}>Next: Oracle →</Text>
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
+
+        {/* ── Step 3: Oracle & Market Name ──────────────────── */}
+        {/* BUG-4 fix: market name lives here, isolated from the mint address field */}
+        {wizardStep === 'oracle' && (
+          <>
+            <Text style={styles.sectionTitle}>Oracle & Market Name</Text>
+            <Text style={styles.sectionDesc}>
+              Confirm the oracle source and set a display name for your market.
+            </Text>
+
+            <Panel style={styles.reviewPanel}>
+              <ReviewRow
+                label="Oracle mode"
+                value={tokenMeta?.pool ? '✓ Hyperp DEX pool' : 'Admin (devnet default)'}
+              />
+              {tokenMeta?.pool && (
+                <ReviewRow label="Pool" value={tokenMeta.pool.pairLabel} />
+              )}
+              {tokenMeta && (
+                <ReviewRow
+                  label="Initial price"
+                  value={`$${(Number(tokenMeta.initial_price_e6) / 1_000_000).toFixed(4)}`}
+                />
+              )}
+            </Panel>
+
+            {/* Market name input — separate from mint field to prevent confusion */}
+            <InputField
+              label="Market Name"
+              value={marketName}
+              onChangeText={setMarketName}
+              placeholder="e.g. SOL-PERP"
+              autoCapitalize="characters"
+              autoCorrect={false}
+              maxLength={64}
+            />
+
+            <View style={styles.navRow}>
+              <TouchableOpacity
+                style={styles.secondaryBtn}
+                onPress={() => setWizardStep('tier')}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.secondaryBtnText}>← Back</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.primaryBtn,
+                  styles.primaryBtnFlex,
+                  !marketName.trim() && styles.primaryBtnDisabled,
+                ]}
                 onPress={() => setWizardStep('review')}
+                disabled={!marketName.trim()}
                 activeOpacity={0.8}
               >
                 <Text style={styles.primaryBtnText}>Review →</Text>
@@ -453,7 +515,7 @@ export function MarketCreationScreen() {
           </>
         )}
 
-        {/* ── Step 3: Review & deploy ────────────────────────── */}
+        {/* ── Step 4: Review & deploy ────────────────────────── */}
         {wizardStep === 'review' && (
           <>
             <Text style={styles.sectionTitle}>Review & Deploy</Text>
@@ -510,7 +572,7 @@ export function MarketCreationScreen() {
 
             <TouchableOpacity
               style={[styles.secondaryBtn, { alignSelf: 'center' }]}
-              onPress={() => setWizardStep('tier')}
+              onPress={() => setWizardStep('oracle')}
               activeOpacity={0.8}
             >
               <Text style={styles.secondaryBtnText}>← Back</Text>

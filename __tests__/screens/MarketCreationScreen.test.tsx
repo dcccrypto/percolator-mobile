@@ -1,5 +1,5 @@
 /**
- * Tests for src/screens/MarketCreationScreen.tsx (3-step wizard, GH #80)
+ * Tests for src/screens/MarketCreationScreen.tsx (5-step wizard: mint → tier → oracle → review → deploy)
  */
 import React from 'react';
 import { render, fireEvent, act } from '@testing-library/react-native';
@@ -56,12 +56,11 @@ describe('MarketCreationScreen', () => {
     expect(toJSON()).not.toBeNull();
   });
 
-  it('shows step 1: mint address input and market name field', () => {
+  it('shows step 1: mint address input (market name is on oracle step 3)', () => {
     const { getAllByText } = render(<MarketCreationScreen />);
-    // "Create Market" title or "Mint Address" label should exist
+    // "Create Market" title or "Mint Address" label should exist in step 1
     expect(getAllByText(/Mint Address|Create Market/i).length).toBeGreaterThanOrEqual(1);
-    // Market Name field visible in step 1
-    expect(getAllByText(/Market Name|Name/i).length).toBeGreaterThanOrEqual(1);
+    // "Market Name" was moved to the Oracle step (step 3) — not shown in step 1
   });
 
   it('shows next/advance button in step 1', () => {

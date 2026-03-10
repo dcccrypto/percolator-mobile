@@ -1,3 +1,7 @@
+// Polyfill Web Crypto for React Native — MUST be the very first import.
+// Fixes: "crypto.getRandomValues() not supported" (uuid / @solana/web3.js).
+import 'react-native-get-random-values';
+
 import { registerRootComponent } from 'expo';
 
 import App from './App';

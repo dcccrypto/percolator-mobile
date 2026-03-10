@@ -1,5 +1,4 @@
 import { useState, useCallback } from 'react';
-import { Alert, Linking } from 'react-native';
 import { transact } from '@solana-mobile/mobile-wallet-adapter-protocol';
 import { PublicKey } from '@solana/web3.js';
 import * as SecureStore from 'expo-secure-store';
@@ -10,10 +9,13 @@ import { useWalletStore } from '../store/walletStore';
 
 const AUTH_TOKEN_KEY = 'mwa_auth_token';
 
+export type WalletErrorKind = 'no-wallet' | 'cancelled' | 'generic' | null;
+
 export function useMWA() {
   const wallet = useWalletStore();
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorKind, setErrorKind] = useState<WalletErrorKind>(null);
 
   const connect = useCallback(async () => {
     setConnecting(true);
@@ -60,17 +62,15 @@ export function useMWA() {
       const rawMessage = err instanceof Error ? err.message : String(err);
       const isNoWallet =
         /no installed wallet|wallet.*not found|Found no.*wallet/i.test(rawMessage);
+      const isCancelled =
+        /cancel|user rejected|denied/i.test(rawMessage);
 
-      if (isNoWallet) {
-        Alert.alert(
-          'No Wallet Found',
-          'Please install a Solana wallet (Phantom or Solflare) to continue.',
-          [
-            { text: 'Install Phantom', onPress: () => Linking.openURL('https://phantom.app/download') },
-            { text: 'Cancel', style: 'cancel' },
-          ],
-        );
-      }
+      const kind: WalletErrorKind = isNoWallet
+        ? 'no-wallet'
+        : isCancelled
+          ? 'cancelled'
+          : 'generic';
+      setErrorKind(kind);
 
       const USER_CONTROLLED_MESSAGES = new Set([
         'Wallet returned no accounts. Please try again.',
@@ -79,7 +79,9 @@ export function useMWA() {
         ? 'No Solana wallet found. Please install Phantom or Solflare.'
         : USER_CONTROLLED_MESSAGES.has(rawMessage)
           ? rawMessage
-          : 'Failed to connect wallet. Please try again.';
+          : isCancelled
+            ? 'Connection cancelled.'
+            : 'Failed to connect wallet. Please try again.';
 
       setConnecting(false);
       setError(message);
@@ -87,6 +89,11 @@ export function useMWA() {
       return null;
     }
   }, [wallet]);
+
+  const clearError = useCallback(() => {
+    setError(null);
+    setErrorKind(null);
+  }, []);
 
   const disconnect = useCallback(async () => {
     await SecureStore.deleteItemAsync(AUTH_TOKEN_KEY);
@@ -148,6 +155,8 @@ export function useMWA() {
     balance: wallet.balance,
     connecting,
     error,
+    errorKind,
+    clearError,
     connect,
     disconnect,
     signAndSend,

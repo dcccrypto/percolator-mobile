@@ -22,6 +22,7 @@ import { ErrorBanner } from '../components/ui/ErrorBanner';
 import { PartialCloseSheet } from '../components/trade/PartialCloseSheet';
 import { PositionDetailSheet } from '../components/trade/PositionDetailSheet';
 import { useMWA } from '../hooks/useMWA';
+import { WalletErrorSheet } from '../components/wallet/WalletErrorSheet';
 import { usePositions, type Position } from '../hooks/usePositions';
 import { useTrade } from '../hooks/useTrade';
 
@@ -217,13 +218,16 @@ function EmptyOrders() {
 
 export function PortfolioScreen() {
   const [tab, setTab] = useState<'open' | 'history' | 'orders'>('open');
-  const { connected, publicKey, connect, error: mwaError } = useMWA();
+  const { connected, publicKey, connect, error: mwaError, errorKind, clearError } = useMWA();
   const navigation = useNavigation<any>();
+  const walletErrorRef = useRef<BottomSheet>(null);
 
-  // Show wallet connection errors to the user (#66)
+  // Show wallet error sheet instead of raw Alert (#77)
   useEffect(() => {
-    if (mwaError) Alert.alert('Wallet Error', mwaError);
-  }, [mwaError]);
+    if (errorKind) {
+      walletErrorRef.current?.snapToIndex(0);
+    }
+  }, [errorKind]);
   const { submitTrade, submitting } = useTrade();
   const setOpenPositionCount = usePositionStore((s) => s.setOpenPositionCount);
 
@@ -421,6 +425,16 @@ export function PortfolioScreen() {
         onClose={handlePartialClose}
       />
     </SafeAreaView>
+    {errorKind && (
+      <WalletErrorSheet
+        ref={walletErrorRef}
+        kind={errorKind}
+        onDismiss={() => {
+          walletErrorRef.current?.close();
+          clearError();
+        }}
+      />
+    )}
     </GestureHandlerRootView>
   );
 }

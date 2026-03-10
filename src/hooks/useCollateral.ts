@@ -16,6 +16,7 @@ import {
 } from '@solana/web3.js';
 import { connection } from '../lib/solana';
 import { useMWA } from './useMWA';
+import { usePositionStore } from '../store/positionStore';
 
 // ---------------------------------------------------------------------------
 // Instruction tag constants
@@ -249,6 +250,7 @@ export function useCollateral(): UseCollateralResult {
   const { publicKey, signAndSend } = useMWA();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const triggerRefresh = usePositionStore((s) => s.triggerRefresh);
 
   const deposit = useCallback(
     async (params: CollateralParams): Promise<CollateralResult | null> => {
@@ -303,7 +305,17 @@ export function useCollateral(): UseCollateralResult {
 
         const serialized = tx.serialize({ requireAllSignatures: false, verifySignatures: false });
         const results = await signAndSend([new Uint8Array(serialized)]);
-        return { signature: results.signatures[0] };
+        const sig = results.signatures[0];
+
+        // P0 fix: confirm tx then force UI to re-read on-chain balances
+        try {
+          await connection.confirmTransaction(sig, 'confirmed');
+        } catch {
+          // Best-effort — still return the sig even if confirmation polling times out
+        }
+        triggerRefresh();
+
+        return { signature: sig };
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Deposit failed');
         return null;
@@ -311,7 +323,7 @@ export function useCollateral(): UseCollateralResult {
         setSubmitting(false);
       }
     },
-    [publicKey, signAndSend],
+    [publicKey, signAndSend, triggerRefresh],
   );
 
   const withdraw = useCallback(
@@ -366,7 +378,17 @@ export function useCollateral(): UseCollateralResult {
 
         const serialized = tx.serialize({ requireAllSignatures: false, verifySignatures: false });
         const results = await signAndSend([new Uint8Array(serialized)]);
-        return { signature: results.signatures[0] };
+        const sig = results.signatures[0];
+
+        // P0 fix: confirm tx then force UI to re-read on-chain balances
+        try {
+          await connection.confirmTransaction(sig, 'confirmed');
+        } catch {
+          // Best-effort
+        }
+        triggerRefresh();
+
+        return { signature: sig };
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Withdraw failed');
         return null;
@@ -374,7 +396,7 @@ export function useCollateral(): UseCollateralResult {
         setSubmitting(false);
       }
     },
-    [publicKey, signAndSend],
+    [publicKey, signAndSend, triggerRefresh],
   );
 
   return { submitting, error, deposit, withdraw };

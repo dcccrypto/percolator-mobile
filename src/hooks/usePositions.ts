@@ -13,6 +13,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { PublicKey } from '@solana/web3.js';
 import { connection } from '../lib/solana';
 import { api } from '../lib/api';
+import { usePositionStore } from '../store/positionStore';
 
 // ---------------------------------------------------------------------------
 // Binary parsing helpers (mirrors packages/core/src/solana/slab.ts)
@@ -174,6 +175,7 @@ export function usePositions(walletPublicKey: string | null): UsePositionsResult
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
+  const refreshTick = usePositionStore((s) => s.refreshTick);
 
   const refresh = useCallback(() => setTick((t) => t + 1), []);
 
@@ -281,7 +283,7 @@ export function usePositions(walletPublicKey: string | null): UsePositionsResult
 
     load();
     return () => { cancelled = true; };
-  }, [walletPublicKey, tick]);
+  }, [walletPublicKey, tick, refreshTick]);
 
   return { positions, loading, error, refresh };
 }

@@ -11,6 +11,10 @@ interface InputFieldProps {
   suffix?: string;
   rightAction?: { label: string; onPress: () => void };
   keyboardType?: 'default' | 'numeric' | 'decimal-pad';
+  /** Maximum number of characters allowed. Enforced natively on iOS/Android. */
+  maxLength?: number;
+  autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
+  autoCorrect?: boolean;
   style?: ViewStyle;
 }
 
@@ -22,6 +26,9 @@ export function InputField({
   suffix,
   rightAction,
   keyboardType = 'default',
+  maxLength,
+  autoCapitalize,
+  autoCorrect,
   style,
 }: InputFieldProps) {
   return (
@@ -35,6 +42,9 @@ export function InputField({
           placeholder={placeholder}
           placeholderTextColor={colors.textMuted}
           keyboardType={keyboardType}
+          maxLength={maxLength}
+          autoCapitalize={autoCapitalize}
+          autoCorrect={autoCorrect}
           selectionColor={colors.accent}
         />
         {suffix && <Text style={styles.suffix}>{suffix}</Text>}

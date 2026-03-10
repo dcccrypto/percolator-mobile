@@ -365,6 +365,7 @@ export function MarketCreationScreen() {
               placeholder="e.g. SOL-PERP"
               autoCapitalize="characters"
               autoCorrect={false}
+              maxLength={64}
             />
 
             <TouchableOpacity

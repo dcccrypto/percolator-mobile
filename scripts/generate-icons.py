@@ -133,50 +133,61 @@ def measure_glyph_size(font_size: int) -> tuple:
 def generate_adaptive_icon_fg():
     """512x512 adaptive icon foreground — opaque dark bg + glow + white P.
 
-    Previous version used transparent bg with white-only P, which was invisible
-    on light launcher backgrounds (designer BLOCKER). Now uses opaque foreground
-    with its own dark background + purple glow, matching the app icon style.
-
-    Android safe zone: 66% of 512px = 338px centred, inset 87px each edge.
-    Glyph scaled to fit within safe zone for circular/squircle masks.
+    Android safe zone: 66% of 512px = 338px centred, r=169px from centre.
+    Glyph capped at 48% of canvas width (≤246px) so all content stays inside
+    r=169px regardless of mask shape (circle/squircle/rounded-rect).
+    Vertical centre corrected by measuring content centroid of the rendered
+    glyph and nudging to align with canvas centre.
     """
     SIZE = 512
-    SAFE_INSET = 87
-    SAFE_SIZE = SIZE - 2 * SAFE_INSET   # 338px
-    MAX_GLYPH_DIM = int((SAFE_SIZE // 2) * 2 * 0.73)  # ~247px
-    cx = cy = SIZE // 2
+    MAX_GLYPH_R = 169               # hard safe-zone radius (px from centre)
+    MAX_GLYPH_DIM = int(SIZE * 0.46)  # 235px — glyph + glow feather stays inside r=169
+    cx = cy = SIZE // 2             # 256, 256
 
     # Opaque dark background with radial purple glow
     img = Image.new("RGBA", (SIZE, SIZE), (*BG_COLOR, 255))
     img = radial_glow(img, cx, cy, 180, ACCENT, 0.40)
 
-    # Auto-scale font_size to fit within safe zone
+    # Auto-scale font_size so glyph max dimension ≤ MAX_GLYPH_DIM
     font_size = 280
-    for _ in range(8):
+    for _ in range(10):
         gw, gh = measure_glyph_size(font_size)
         largest = max(gw, gh)
-        if largest == 0 or abs(largest - MAX_GLYPH_DIM) <= 3:
+        if largest == 0 or abs(largest - MAX_GLYPH_DIM) <= 2:
             break
         font_size = int(font_size * MAX_GLYPH_DIM / largest)
     gw, gh = measure_glyph_size(font_size)
-    print(f"  adaptive-icon: font_size={font_size}, glyph={gw}x{gh}px "
-          f"(safe zone {SAFE_SIZE}px, max_dim={MAX_GLYPH_DIM}px)")
-
-    while max(gw, gh) > SAFE_SIZE - 20 and font_size > 100:
-        font_size = int(font_size * 0.90)
+    # Hard safety clamp — never exceed MAX_GLYPH_DIM
+    while max(gw, gh) > MAX_GLYPH_DIM and font_size > 80:
+        font_size = int(font_size * 0.95)
         gw, gh = measure_glyph_size(font_size)
+
+    print(f"  adaptive-icon: font_size={font_size}, glyph={gw}x{gh}px "
+          f"(safe-zone r={MAX_GLYPH_R}px, max_dim={MAX_GLYPH_DIM}px)")
+
+    # Measure content centroid to correct vertical offset (QA: centre was y=282)
+    probe = make_italic_glyph("P", font_size, (255, 255, 255), shear=0.22)
+    probe_arr = np.array(probe)
+    solid_ys = np.where(probe_arr[:, :, 3] > 10)[0]
+    if len(solid_ys) > 0:
+        content_cy = int((solid_ys.min() + solid_ys.max()) / 2)
+        nudge_y = probe.size[1] // 2 - content_cy
+    else:
+        nudge_y = 0
+    print(f"  adaptive-icon: content_cy={content_cy if len(solid_ys) > 0 else 'n/a'}, "
+          f"nudge_y={nudge_y}")
 
     # Purple glow behind P (two passes: wide soft + tight bright)
     glyph_glow = make_italic_glyph("P", font_size, (*ACCENT,), shear=0.22)
     glyph_glow = glyph_glow.filter(ImageFilter.GaussianBlur(radius=18))
-    img = place_glyph(img, glyph_glow, cx, cy)
+    img = place_glyph(img, glyph_glow, cx, cy, nudge_y=nudge_y)
     glyph_glow2 = make_italic_glyph("P", font_size, (*ACCENT,), shear=0.22)
     glyph_glow2 = glyph_glow2.filter(ImageFilter.GaussianBlur(radius=8))
-    img = place_glyph(img, glyph_glow2, cx, cy)
+    img = place_glyph(img, glyph_glow2, cx, cy, nudge_y=nudge_y)
 
     # Solid white #FFFFFF P on top (bold italic, designer spec)
     glyph_white = make_italic_glyph("P", font_size, (255, 255, 255), shear=0.22)
-    img = place_glyph(img, glyph_white, cx, cy)
+    img = place_glyph(img, glyph_white, cx, cy, nudge_y=nudge_y)
 
     out_path = os.path.join(OUT_DIR, "adaptive-icon-foreground.png")
     img.convert("RGBA").save(out_path, "PNG", optimize=True)
@@ -230,16 +241,18 @@ def generate_splash():
     except Exception as e:
         print(f"  (wordmark skipped: {e})")
 
-    # Clean bottom/top strips to remove any artifacts
+    # FIX (CodeRabbit): composite RGBA content onto an explicit BG canvas BEFORE
+    # clean passes — this eliminates bottom-edge artifacts caused by residual
+    # semi-transparent pixels that survive direct RGB conversion.
+    bg_canvas = Image.new("RGBA", (W, H), (*BG_COLOR, 255))
+    img = Image.alpha_composite(bg_canvas, img.convert("RGBA"))
+
+    # Clean edge strips (belt-and-suspenders after composite)
     BOTTOM_CLEAN = 600
     TOP_CLEAN = 300
     clean = ImageDraw.Draw(img)
     clean.rectangle([0, H - BOTTOM_CLEAN, W, H], fill=(*BG_COLOR, 255))
     clean.rectangle([0, 0, W, TOP_CLEAN], fill=(*BG_COLOR, 255))
-    arr = np.array(img)
-    arr[H - BOTTOM_CLEAN:, :] = [*BG_COLOR, 255]
-    arr[:TOP_CLEAN, :] = [*BG_COLOR, 255]
-    img = Image.fromarray(arr, "RGBA")
 
     out_path = os.path.join(OUT_DIR, "splash.png")
     img.convert("RGB").save(out_path, "PNG", optimize=True)

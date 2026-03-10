@@ -236,7 +236,13 @@ def generate_adaptive_icon_bg():
 
 
 def generate_splash():
-    """1242×2688 splash screen."""
+    """1242×2688 splash screen.
+
+    Fix (clean re-export): composite all layers onto an explicit RGB canvas
+    coloured BG_COLOR rather than using .convert("RGB") which blends against
+    black (0,0,0) — any sub-pixel alpha residue at edges would previously
+    produce a faint off-colour horizontal line at the bottom edge.
+    """
     W, H = 1242, 2688
     img = Image.new("RGBA", (W, H), (*BG_COLOR, 255))
     cx, cy = W // 2, H // 2 - 100
@@ -285,9 +291,23 @@ def generate_splash():
     arr[:TOP_CLEAN, :] = [*BG_COLOR, 255]
     img = Image.fromarray(arr, "RGBA")
 
+    # Composite onto an explicit BG_COLOR RGB canvas.
+    # This avoids PIL's default RGBA→RGB blend-against-black behaviour which
+    # could leave a faint off-colour line at any edge where alpha != exactly 255.
+    out_rgb = Image.new("RGB", (W, H), BG_COLOR)
+    alpha_ch = img.split()[3]          # A channel
+    out_rgb.paste(img.convert("RGB"), mask=alpha_ch)
+
+    # Final numpy guard: ensure every single pixel in bottom/top clean zones is
+    # exactly BG_COLOR in the output buffer (no blending residue whatsoever).
+    arr_out = np.array(out_rgb)
+    arr_out[H - BOTTOM_CLEAN:, :] = list(BG_COLOR)
+    arr_out[:TOP_CLEAN, :] = list(BG_COLOR)
+    out_rgb = Image.fromarray(arr_out, "RGB")
+
     out_path = os.path.join(OUT_DIR, "splash.png")
-    img.convert("RGB").save(out_path, "PNG", optimize=True)
-    print(f"✅ splash.png ({W}×{H}) → {out_path}")
+    out_rgb.save(out_path, "PNG")
+    print(f"✅ splash.png ({W}×{H}) → {out_path} (clean RGB export, no alpha blend artifact)")
 
 
 # ---------------------------------------------------------------------------

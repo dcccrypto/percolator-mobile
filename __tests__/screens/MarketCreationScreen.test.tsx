@@ -1,5 +1,6 @@
 /**
- * Tests for src/screens/MarketCreationScreen.tsx (5-step wizard: mint → tier → oracle → review → deploy)
+ * Tests for src/screens/MarketCreationScreen.tsx
+ * 3-step wizard matching web quick mode: Token → Slab Tier → Review
  */
 import React from 'react';
 import { render, fireEvent, act } from '@testing-library/react-native';
@@ -23,7 +24,7 @@ jest.mock('../../src/hooks/useMWA', () => ({
   }),
 }));
 
-// Mock new server-assisted useCreateMarket
+// Mock useCreateMarket
 jest.mock('../../src/hooks/useCreateMarket', () => ({
   useCreateMarket: () => ({
     state: {
@@ -39,7 +40,7 @@ jest.mock('../../src/hooks/useCreateMarket', () => ({
   }),
 }));
 
-// Mock fetch (used for /api/launch token detection in step 1)
+// Mock fetch
 global.fetch = jest.fn(() =>
   Promise.resolve({ ok: false, status: 404 })
 ) as jest.Mock;
@@ -56,27 +57,25 @@ describe('MarketCreationScreen', () => {
     expect(toJSON()).not.toBeNull();
   });
 
-  it('shows step 1: mint address input (market name is on oracle step 3)', () => {
-    const { getAllByText } = render(<MarketCreationScreen />);
-    // "Create Market" title or "Mint Address" label should exist in step 1
-    expect(getAllByText(/Mint Address|Create Market/i).length).toBeGreaterThanOrEqual(1);
-    // "Market Name" was moved to the Oracle step (step 3) — not shown in step 1
+  it('shows step 1 Token with step indicator', () => {
+    const { getByText, getAllByText } = render(<MarketCreationScreen />);
+    expect(getByText('Create Market')).toBeTruthy();
+    expect(getByText(/Step 1 of 3 — Token/)).toBeTruthy();
+    expect(getByText(/STEP 1 \/ 3 — TOKEN/)).toBeTruthy();
   });
 
-  it('shows next/advance button in step 1', () => {
+  it('shows CONTINUE button in step 1 (matching web)', () => {
     const { getByText } = render(<MarketCreationScreen />);
-    // Step 1 CTA advances to tier selection
-    expect(getByText(/Next.*Tier|Continue|Next/i)).toBeTruthy();
-  });
-
-  it('shows deploy/create button text somewhere in the wizard', () => {
-    const { getAllByText } = render(<MarketCreationScreen />);
-    // There should be at least one element with Deploy or Create text
-    expect(getAllByText(/Deploy|Create/i).length).toBeGreaterThanOrEqual(1);
+    expect(getByText('CONTINUE →')).toBeTruthy();
   });
 
   it('renders title "Create Market"', () => {
     const { getByText } = render(<MarketCreationScreen />);
-    expect(getByText(/Create Market/i)).toBeTruthy();
+    expect(getByText('Create Market')).toBeTruthy();
+  });
+
+  it('shows TOKEN MINT ADDRESS label (matching web)', () => {
+    const { getByText } = render(<MarketCreationScreen />);
+    expect(getByText('TOKEN MINT ADDRESS')).toBeTruthy();
   });
 });

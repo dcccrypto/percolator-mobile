@@ -291,7 +291,7 @@ export function useCollateral(): UseCollateralResult {
         const decimals = params.decimals ?? 6;
         const rawAmount = BigInt(Math.round(params.amount * 10 ** decimals));
 
-        const { blockhash } = await connection.getLatestBlockhash('confirmed');
+        const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
         const tx = new Transaction({ recentBlockhash: blockhash, feePayer: publicKey });
 
         tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: needsInit ? 400_000 : 200_000 }));
@@ -307,11 +307,22 @@ export function useCollateral(): UseCollateralResult {
         const results = await signAndSend([new Uint8Array(serialized)]);
         const sig = results.signatures[0];
 
-        // P0 fix: confirm tx then force UI to re-read on-chain balances
+        // Confirm with blockhash context form (replaces deprecated string-commitment overload).
+        // Validates against the specific blockhash window and checks confirmation.value.err
+        // so dropped/replaced transactions don't silently succeed.
         try {
-          await connection.confirmTransaction(sig, 'confirmed');
-        } catch {
-          // Best-effort — still return the sig even if confirmation polling times out
+          const confirmation = await connection.confirmTransaction(
+            { signature: sig, blockhash, lastValidBlockHeight },
+            'confirmed',
+          );
+          if (confirmation.value.err) {
+            throw new Error(`Transaction failed on-chain: ${JSON.stringify(confirmation.value.err)}`);
+          }
+        } catch (confirmErr) {
+          // Re-throw on-chain errors; swallow timeout/polling errors (sig still valid)
+          if (confirmErr instanceof Error && confirmErr.message.startsWith('Transaction failed on-chain')) {
+            throw confirmErr;
+          }
         }
         triggerRefresh();
 
@@ -359,7 +370,7 @@ export function useCollateral(): UseCollateralResult {
         const decimals = params.decimals ?? 6;
         const rawAmount = BigInt(Math.round(params.amount * 10 ** decimals));
 
-        const { blockhash } = await connection.getLatestBlockhash('confirmed');
+        const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
         const tx = new Transaction({ recentBlockhash: blockhash, feePayer: publicKey });
 
         tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 200_000 }));
@@ -380,11 +391,22 @@ export function useCollateral(): UseCollateralResult {
         const results = await signAndSend([new Uint8Array(serialized)]);
         const sig = results.signatures[0];
 
-        // P0 fix: confirm tx then force UI to re-read on-chain balances
+        // Confirm with blockhash context form (replaces deprecated string-commitment overload).
+        // Validates against the specific blockhash window and checks confirmation.value.err
+        // so dropped/replaced transactions don't silently succeed.
         try {
-          await connection.confirmTransaction(sig, 'confirmed');
-        } catch {
-          // Best-effort
+          const confirmation = await connection.confirmTransaction(
+            { signature: sig, blockhash, lastValidBlockHeight },
+            'confirmed',
+          );
+          if (confirmation.value.err) {
+            throw new Error(`Transaction failed on-chain: ${JSON.stringify(confirmation.value.err)}`);
+          }
+        } catch (confirmErr) {
+          // Re-throw on-chain errors; swallow timeout/polling errors (sig still valid)
+          if (confirmErr instanceof Error && confirmErr.message.startsWith('Transaction failed on-chain')) {
+            throw confirmErr;
+          }
         }
         triggerRefresh();
 

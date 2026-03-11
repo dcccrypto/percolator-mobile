@@ -1,11 +1,14 @@
 /**
- * MarketCreationScreen — mobile market creation wizard (GH #80).
+ * MarketCreationScreen — mobile market creation wizard.
  *
- * Matches web wizard flow:
- *  Step 1 — Token mint address input (auto-detects name/symbol from /api/launch)
- *  Step 2 — Slab tier picker with SOL cost breakdown
- *  Step 3 — Oracle mode (auto-detected from DEX pool, or admin fallback)
- *  Deploy  — 5-step progress via useCreateMarket → /api/mobile/create-market
+ * Copy/flow parity with web CreateMarketWizard (Quick mode):
+ *  Step 1 — Token: Mint address input + auto-detect metadata
+ *  Step 2 — Slab Tier: tier picker with SOL cost breakdown + oracle auto-detection
+ *  Step 3 — Review: market preview, cost breakdown, tx steps, launch button
+ *
+ * Web quick mode skips Oracle + Parameters (auto-resolved) and jumps 1→2→4.
+ * Mobile mirrors this as a 3-visible-step flow (Token → Slab Tier → Review).
+ * The step indicator shows "Step X of 3" matching the actual mobile UX.
  */
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
@@ -15,7 +18,6 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
-  Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, radii } from '../theme/tokens';
@@ -39,11 +41,19 @@ interface TokenMeta {
   initial_price_e6: string;
 }
 
-// BUG-5 fix: 5-step wizard matching web flow.
-// Steps: mint → tier → oracle → review → (deploying) → done
-type WizardStep = 'mint' | 'tier' | 'oracle' | 'review' | 'deploying' | 'done';
+// 3 visible wizard steps + deploying + done
+type WizardStep = 'token' | 'slab-tier' | 'review' | 'deploying' | 'done';
 
-/* ── Tier config ─────────────────────────────────────────────────── */
+/* ── Step labels (match web quick mode) ──────────────────────────── */
+const STEP_LABELS = ['Token', 'Slab Tier', 'Review'] as const;
+const VISIBLE_STEPS: WizardStep[] = ['token', 'slab-tier', 'review'];
+
+function stepIndex(step: WizardStep): number {
+  const idx = VISIBLE_STEPS.indexOf(step);
+  return idx >= 0 ? idx : -1;
+}
+
+/* ── Tier config (match web SLAB_TIERS) ──────────────────────────── */
 
 interface TierOption {
   key: SlabTier;
@@ -53,7 +63,6 @@ interface TierOption {
   desc: string;
 }
 
-// BUG-3 fix: tier labels must match the web wizard (Small / Medium / Large).
 const TIER_OPTIONS: TierOption[] = [
   {
     key: 'small',
@@ -81,23 +90,24 @@ const TIER_OPTIONS: TierOption[] = [
 const WEB_API_BASE =
   process.env.EXPO_PUBLIC_WEB_URL ?? 'https://percolatorlaunch.com/api';
 
-/* ── Step progress bar ───────────────────────────────────────────── */
+/* ── Transaction steps (match web StepReview TX_STEPS) ───────────── */
 
-const DEPLOY_STEPS = [
-  'Building txs…',
-  'Create slab & init market',
-  'Oracle setup & crank',
-  'Init LP',
-  'Deposit & insurance',
-  'Insurance mint',
+const TX_STEPS = [
+  { label: 'Create slab & initialize market', detail: 'Atomic — rolls back if any part fails' },
+  { label: 'Oracle setup & crank', detail: 'Configure price feed, first crank' },
+  { label: 'Initialize LP', detail: 'Create liquidity provider pool' },
+  { label: 'Deposit, insurance & finalize', detail: 'Seed capital + insurance fund' },
+  { label: 'Insurance LP mint', detail: 'Enable permissionless insurance deposits' },
 ];
 
-function DeployProgress({ stepIndex }: { stepIndex: number }) {
+/* ── Deploy progress (match web LaunchProgress) ──────────────────── */
+
+function DeployProgress({ stepIndex: si }: { stepIndex: number }) {
   return (
     <View style={styles.progressContainer}>
-      {DEPLOY_STEPS.map((label, i) => {
-        const done = i < stepIndex;
-        const active = i === stepIndex;
+      {TX_STEPS.map((step, i) => {
+        const done = i < si;
+        const active = i === si;
         return (
           <View key={i} style={styles.progressRow}>
             <View
@@ -113,18 +123,58 @@ function DeployProgress({ stepIndex }: { stepIndex: number }) {
                 <ActivityIndicator size="small" color="#000" style={{ transform: [{ scale: 0.6 }] }} />
               ) : null}
             </View>
-            <Text
-              style={[
-                styles.progressLabel,
-                done && styles.progressLabelDone,
-                active && styles.progressLabelActive,
-              ]}
-            >
-              {label}
-            </Text>
+            <View style={{ flex: 1 }}>
+              <Text
+                style={[
+                  styles.progressLabel,
+                  done && styles.progressLabelDone,
+                  active && styles.progressLabelActive,
+                ]}
+              >
+                {step.label}
+              </Text>
+            </View>
           </View>
         );
       })}
+    </View>
+  );
+}
+
+/* ── Step indicator (match web WizardProgress mobile breakpoint) ── */
+
+function StepIndicator({ current }: { current: WizardStep }) {
+  const idx = stepIndex(current);
+  if (idx < 0) return null;
+
+  return (
+    <View style={styles.stepIndicatorRow}>
+      <Text style={styles.stepIndicatorText}>
+        Step {idx + 1} of {STEP_LABELS.length} — {STEP_LABELS[idx]}
+      </Text>
+      <View style={styles.stepDots}>
+        {STEP_LABELS.map((_, i) => (
+          <View
+            key={i}
+            style={[
+              styles.stepDot,
+              i < idx && styles.stepDotDone,
+              i === idx && styles.stepDotActive,
+            ]}
+          />
+        ))}
+      </View>
+    </View>
+  );
+}
+
+/* ── Review row helper ───────────────────────────────────────────── */
+
+function ReviewRow({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.reviewRow}>
+      <Text style={styles.reviewLabel}>{label}</Text>
+      <Text style={styles.reviewValue}>{value}</Text>
     </View>
   );
 }
@@ -135,9 +185,8 @@ export function MarketCreationScreen() {
   const { connected, connect, connecting } = useMWA();
   const { state: deployState, deploy, reset } = useCreateMarket();
 
-  const [wizardStep, setWizardStep] = useState<WizardStep>('mint');
+  const [wizardStep, setWizardStep] = useState<WizardStep>('token');
   const [mintInput, setMintInput] = useState('');
-  const [marketName, setMarketName] = useState('');
   const [selectedTier, setSelectedTier] = useState<SlabTier>('small');
   const [tokenMeta, setTokenMeta] = useState<TokenMeta | null>(null);
   const [metaLoading, setMetaLoading] = useState(false);
@@ -157,7 +206,7 @@ export function MarketCreationScreen() {
     setMetaError(null);
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
-    if (text.trim().length < 32) return; // Solana pubkeys are 32+ chars
+    if (text.trim().length < 32) return;
 
     debounceRef.current = setTimeout(async () => {
       setMetaLoading(true);
@@ -183,28 +232,28 @@ export function MarketCreationScreen() {
           initial_price_e6: cfg.initialPriceE6 ?? '1000000',
         };
         setTokenMeta(meta);
-        // BUG-4: guard against auto-populating with a raw mint address or junk.
-        // A valid ticker starts with a letter and is short (≤12 chars).
-        const symbolOk = /^[A-Za-z][A-Za-z0-9]{0,11}$/.test(meta.symbol ?? '');
-        const safeSymbol = symbolOk ? meta.symbol : 'UNKNOWN';
-        if (!marketName || marketName === tokenMeta?.name || marketName === tokenMeta?.symbol) {
-          setMarketName(`${safeSymbol}-PERP`);
-        }
       } catch (e) {
         setMetaError(e instanceof Error ? e.message : 'Failed to fetch token info');
       } finally {
         setMetaLoading(false);
       }
     }, 600);
-  }, [selectedTier, marketName, tokenMeta]);
+  }, [selectedTier]);
+
+  // Auto-generated market name (match web: SYMBOL-PERP)
+  const marketName = tokenMeta
+    ? (() => {
+        const symbolOk = /^[A-Za-z][A-Za-z0-9]{0,11}$/.test(tokenMeta.symbol ?? '');
+        return `${symbolOk ? tokenMeta.symbol : 'UNKNOWN'}-PERP`;
+      })()
+    : '';
 
   const handleDeploy = useCallback(() => {
-    if (!connected || !mintInput.trim() || !marketName.trim()) return;
+    if (!connected || !mintInput.trim()) return;
     deploy({
       mint: mintInput.trim(),
-      name: marketName.trim(),
+      name: marketName || `${mintInput.trim().slice(0, 6)}-PERP`,
       tier: selectedTier,
-      // Force admin oracle on devnet — hyperp uses mainnet pool addresses
       oracle_mode: 'admin',
       initial_price_e6: tokenMeta?.initial_price_e6 ?? '1000000',
     });
@@ -212,27 +261,34 @@ export function MarketCreationScreen() {
 
   const handleReset = useCallback(() => {
     reset();
-    setWizardStep('mint');
+    setWizardStep('token');
     setMintInput('');
-    setMarketName('');
     setTokenMeta(null);
     setMetaError(null);
     setSelectedTier('small');
   }, [reset]);
 
-  /* ── Render: Done ──────────────────────────────────────────────── */
+  // Oracle label for review (match web format)
+  const oracleLabel = tokenMeta?.pool
+    ? `${tokenMeta.pool.pairLabel} (HyperpEMA)`
+    : 'Admin Oracle';
+
+  const maxLeverage = 10; // default 1000bps = 10x (match web default)
+  const tradingFeeBps = 30; // web default
+
+  /* ── Render: Done (match web LaunchSuccess) ────────────────────── */
   if (wizardStep === 'done') {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <View style={styles.header}>
-          <Text style={styles.title}>Market Created 🎉</Text>
+          <Text style={styles.title}>Create Market</Text>
         </View>
         <View style={styles.doneContainer}>
           <Text style={styles.doneIcon}>✅</Text>
           <Text style={styles.doneTitle}>{marketName} is live on devnet</Text>
           {deployState.slabAddress && (
             <Text style={styles.doneAddress}>
-              Slab: {deployState.slabAddress.slice(0, 16)}…
+              Market: {deployState.slabAddress.slice(0, 16)}…
             </Text>
           )}
           {deployState.txSignature && (
@@ -240,30 +296,36 @@ export function MarketCreationScreen() {
               Tx: {deployState.txSignature.slice(0, 20)}…
             </Text>
           )}
+          <Text style={styles.devnetNote}>
+            ✓ Devnet mode. Your wallet will receive devnet tokens automatically.
+          </Text>
           <TouchableOpacity style={styles.primaryBtn} onPress={handleReset} activeOpacity={0.8}>
-            <Text style={styles.primaryBtnText}>Create Another Market</Text>
+            <Text style={styles.primaryBtnText}>DEPLOY ANOTHER →</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
     );
   }
 
-  /* ── Render: Deploying ─────────────────────────────────────────── */
+  /* ── Render: Deploying (match web LaunchProgress) ──────────────── */
   if (wizardStep === 'deploying') {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <View style={styles.header}>
-          <Text style={styles.title}>Deploying Market…</Text>
+          <Text style={styles.title}>Create Market</Text>
         </View>
         {deployState.error ? (
           <View style={styles.content}>
             <ErrorBanner message={deployState.error} />
+            <Text style={styles.txStepNote}>
+              {TX_STEPS.length} transactions — each requires a wallet signature. Step 1 is atomic: if it fails, no SOL is lost.
+            </Text>
             <TouchableOpacity
               style={[styles.primaryBtn, { marginTop: 16 }]}
               onPress={() => setWizardStep('review')}
               activeOpacity={0.8}
             >
-              <Text style={styles.primaryBtnText}>Try Again</Text>
+              <Text style={styles.primaryBtnText}>← BACK</Text>
             </TouchableOpacity>
           </View>
         ) : (
@@ -281,25 +343,11 @@ export function MarketCreationScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <Text style={styles.title}>Create Market</Text>
-        {/* BUG-5: 5-step indicator matching web (mint → tier → oracle → review → deploy) */}
-        <View style={styles.stepIndicator}>
-          {(['mint', 'tier', 'oracle', 'review', 'deploying'] as const).map((s, i) => {
-            const STEPS = ['mint', 'tier', 'oracle', 'review', 'deploying'];
-            const currentIdx = STEPS.indexOf(wizardStep);
-            const isDone = i < currentIdx;
-            const isActive = s === wizardStep;
-            return (
-              <View
-                key={s}
-                style={[
-                  styles.stepDot,
-                  isActive && styles.stepDotActive,
-                  isDone && styles.stepDotDone,
-                ]}
-              />
-            );
-          })}
-        </View>
+      </View>
+
+      {/* Step indicator (match web: "Step X of N — Label" + dots) */}
+      <View style={styles.stepIndicatorContainer}>
+        <StepIndicator current={wizardStep} />
       </View>
 
       {deployState.error && <ErrorBanner message={deployState.error} />}
@@ -310,18 +358,22 @@ export function MarketCreationScreen() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        {/* ── Step 1: Mint input ─────────────────────────────── */}
-        {wizardStep === 'mint' && (
+        {/* ── Step 1: Token (match web StepTokenSelect) ──────── */}
+        {wizardStep === 'token' && (
           <>
-            <Text style={styles.sectionTitle}>Token Mint Address</Text>
-            <Text style={styles.sectionDesc}>
-              Paste the Solana SPL token mint address for your perpetual market.
-            </Text>
+            {/* Step sub-header (match web "STEP 1 / 4 — Token") */}
+            <View style={styles.stepHeader}>
+              <Text style={styles.stepHeaderText}>
+                STEP 1 / {STEP_LABELS.length} — TOKEN
+              </Text>
+            </View>
+
+            <Text style={styles.fieldLabel}>TOKEN MINT ADDRESS</Text>
             <InputField
-              label="Mint Address"
+              label="Token Mint Address"
               value={mintInput}
               onChangeText={handleMintChange}
-              placeholder="e.g. So11111111111111111111111111111111111111112"
+              placeholder="Paste mint address..."
               autoCapitalize="none"
               autoCorrect={false}
             />
@@ -329,70 +381,91 @@ export function MarketCreationScreen() {
             {metaLoading && (
               <View style={styles.metaRow}>
                 <ActivityIndicator size="small" color={colors.accent} />
-                <Text style={styles.metaLoading}>Detecting token…</Text>
+                <Text style={styles.metaLoading}>Checking mint on network...</Text>
               </View>
             )}
 
             {metaError && (
-              <Text style={styles.metaError}>{metaError}</Text>
+              <Text style={styles.metaError}>
+                ✗ {metaError}
+              </Text>
             )}
 
             {tokenMeta && !metaLoading && (
               <Panel style={styles.tokenCard}>
-                <Text style={styles.tokenSymbol}>{tokenMeta.symbol}</Text>
-                <Text style={styles.tokenName}>{tokenMeta.name}</Text>
+                <View style={styles.tokenCardRow}>
+                  {/* Token avatar (match web) */}
+                  <View style={styles.tokenAvatar}>
+                    <Text style={styles.tokenAvatarText}>
+                      {tokenMeta.symbol.slice(0, 2).toUpperCase()}
+                    </Text>
+                  </View>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={styles.tokenSymbol}>
+                      {tokenMeta.symbol}
+                      <Text style={styles.tokenNameInline}> {tokenMeta.name}</Text>
+                    </Text>
+                    <Text style={styles.tokenMintTruncated}>
+                      {mintInput.slice(0, 6)}...{mintInput.slice(-4)}
+                    </Text>
+                  </View>
+                </View>
                 <View style={styles.tokenMetaRow}>
-                  <Text style={styles.tokenMetaLabel}>Decimals</Text>
+                  <Text style={styles.tokenMetaLabel}>DECIMALS</Text>
                   <Text style={styles.tokenMetaValue}>{tokenMeta.decimals}</Text>
                 </View>
                 {tokenMeta.pool ? (
-                  <View style={styles.tokenMetaRow}>
-                    <Text style={styles.tokenMetaLabel}>Pool detected</Text>
-                    <Text style={[styles.tokenMetaValue, { color: colors.long }]}>
-                      ✓ {tokenMeta.pool.pairLabel}
-                    </Text>
-                  </View>
+                  <>
+                    <View style={styles.tokenMetaRow}>
+                      <Text style={styles.tokenMetaLabel}>POOL DETECTED</Text>
+                      <Text style={[styles.tokenMetaValue, { color: colors.long }]}>
+                        ✓ {tokenMeta.pool.pairLabel}
+                      </Text>
+                    </View>
+                    <View style={styles.tokenMetaRow}>
+                      <Text style={styles.tokenMetaLabel}>INITIAL PRICE</Text>
+                      <Text style={styles.tokenMetaValue}>
+                        ${(Number(tokenMeta.initial_price_e6) / 1_000_000).toFixed(4)}
+                      </Text>
+                    </View>
+                  </>
                 ) : (
                   <View style={styles.tokenMetaRow}>
-                    <Text style={styles.tokenMetaLabel}>Oracle</Text>
+                    <Text style={styles.tokenMetaLabel}>ORACLE</Text>
                     <Text style={styles.tokenMetaValue}>Admin (devnet default)</Text>
-                  </View>
-                )}
-                {tokenMeta.pool && (
-                  <View style={styles.tokenMetaRow}>
-                    <Text style={styles.tokenMetaLabel}>Initial price</Text>
-                    <Text style={styles.tokenMetaValue}>
-                      ${(Number(tokenMeta.initial_price_e6) / 1_000_000).toFixed(4)}
-                    </Text>
                   </View>
                 )}
               </Panel>
             )}
-
-            {/* BUG-4 fix: market name moved to oracle step so it can't show as mint addr */}
 
             <TouchableOpacity
               style={[
                 styles.primaryBtn,
                 (!mintInput.trim() || metaLoading) && styles.primaryBtnDisabled,
               ]}
-              onPress={() => setWizardStep('tier')}
+              onPress={() => setWizardStep('slab-tier')}
               disabled={!mintInput.trim() || metaLoading}
               activeOpacity={0.8}
             >
-              <Text style={styles.primaryBtnText}>Next: Choose Tier →</Text>
+              <Text style={styles.primaryBtnText}>CONTINUE →</Text>
             </TouchableOpacity>
           </>
         )}
 
-        {/* ── Step 2: Tier picker ────────────────────────────── */}
-        {wizardStep === 'tier' && (
+        {/* ── Step 2: Slab Tier (match web quick mode step 2) ── */}
+        {wizardStep === 'slab-tier' && (
           <>
-            <Text style={styles.sectionTitle}>Slab Tier</Text>
+            <View style={styles.stepHeader}>
+              <Text style={styles.stepHeaderText}>
+                STEP 2 / {STEP_LABELS.length} — SLAB TIER
+              </Text>
+            </View>
+
             <Text style={styles.sectionDesc}>
-              Choose how many trader accounts your market supports. More accounts = higher
-              SOL rent cost.
+              Choose your market size. Larger slabs support more concurrent traders but cost more SOL to deploy.
             </Text>
+
+            <Text style={styles.fieldLabel}>SLAB TIER</Text>
 
             {TIER_OPTIONS.map((t) => (
               <TouchableOpacity
@@ -409,144 +482,124 @@ export function MarketCreationScreen() {
                   <Text style={styles.tierRent}>{t.rentSol} SOL</Text>
                 </View>
                 <Text style={styles.tierDesc}>{t.desc}</Text>
-
-                {/* Cost breakdown */}
-                <View style={styles.costTable}>
-                  <View style={styles.costRow}>
-                    <Text style={styles.costLabel}>Slab rent</Text>
-                    <Text style={styles.costValue}>{t.rentSol} SOL</Text>
-                  </View>
-                  <View style={styles.costRow}>
-                    <Text style={styles.costLabel}>Vault seed</Text>
-                    <Text style={styles.costValue}>500 tokens</Text>
-                  </View>
-                  <View style={styles.costRow}>
-                    <Text style={styles.costLabel}>LP collateral</Text>
-                    <Text style={styles.costValue}>1,000 tokens</Text>
-                  </View>
-                  <View style={styles.costRow}>
-                    <Text style={styles.costLabel}>Insurance seed</Text>
-                    <Text style={styles.costValue}>100 tokens</Text>
-                  </View>
-                  <View style={styles.costRow}>
-                    <Text style={styles.costLabel}>Network fees</Text>
-                    <Text style={styles.costValue}>~0.01 SOL</Text>
-                  </View>
-                </View>
               </TouchableOpacity>
             ))}
 
+            {/* Oracle detection status (match web) */}
+            {metaLoading ? (
+              <Text style={styles.oracleStatus}>⏳ Detecting oracle...</Text>
+            ) : tokenMeta?.pool ? (
+              <Text style={[styles.oracleStatus, { color: colors.long }]}>
+                ✓ DEX pool detected — permissionless on-chain pricing (no keeper needed)
+              </Text>
+            ) : (
+              <Text style={styles.oracleStatus}>
+                ℹ Admin oracle — you'll control pricing (devnet token)
+              </Text>
+            )}
+
             <View style={styles.navRow}>
               <TouchableOpacity
                 style={styles.secondaryBtn}
-                onPress={() => setWizardStep('mint')}
+                onPress={() => setWizardStep('token')}
                 activeOpacity={0.8}
               >
-                <Text style={styles.secondaryBtnText}>← Back</Text>
+                <Text style={styles.secondaryBtnText}>← BACK</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.primaryBtn, styles.primaryBtnFlex]}
-                onPress={() => setWizardStep('oracle')}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.primaryBtnText}>Next: Oracle →</Text>
-              </TouchableOpacity>
-            </View>
-          </>
-        )}
-
-        {/* ── Step 3: Oracle & Market Name ──────────────────── */}
-        {/* BUG-4 fix: market name lives here, isolated from the mint address field */}
-        {wizardStep === 'oracle' && (
-          <>
-            <Text style={styles.sectionTitle}>Oracle & Market Name</Text>
-            <Text style={styles.sectionDesc}>
-              Confirm the oracle source and set a display name for your market.
-            </Text>
-
-            <Panel style={styles.reviewPanel}>
-              <ReviewRow
-                label="Oracle mode"
-                value={tokenMeta?.pool ? '✓ Hyperp DEX pool' : 'Admin (devnet default)'}
-              />
-              {tokenMeta?.pool && (
-                <ReviewRow label="Pool" value={tokenMeta.pool.pairLabel} />
-              )}
-              {tokenMeta && (
-                <ReviewRow
-                  label="Initial price"
-                  value={`$${(Number(tokenMeta.initial_price_e6) / 1_000_000).toFixed(4)}`}
-                />
-              )}
-            </Panel>
-
-            {/* Market name input — separate from mint field to prevent confusion */}
-            <InputField
-              label="Market Name"
-              value={marketName}
-              onChangeText={setMarketName}
-              placeholder="e.g. SOL-PERP"
-              autoCapitalize="characters"
-              autoCorrect={false}
-              maxLength={64}
-            />
-
-            <View style={styles.navRow}>
-              <TouchableOpacity
-                style={styles.secondaryBtn}
-                onPress={() => setWizardStep('tier')}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.secondaryBtnText}>← Back</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.primaryBtn,
-                  styles.primaryBtnFlex,
-                  !marketName.trim() && styles.primaryBtnDisabled,
-                ]}
                 onPress={() => setWizardStep('review')}
-                disabled={!marketName.trim()}
                 activeOpacity={0.8}
               >
-                <Text style={styles.primaryBtnText}>Review →</Text>
+                <Text style={styles.primaryBtnText}>CONTINUE →</Text>
               </TouchableOpacity>
             </View>
           </>
         )}
 
-        {/* ── Step 4: Review & deploy ────────────────────────── */}
+        {/* ── Step 3: Review (match web StepReview) ──────────── */}
         {wizardStep === 'review' && (
           <>
-            <Text style={styles.sectionTitle}>Review & Deploy</Text>
-
-            <Panel style={styles.reviewPanel}>
-              <ReviewRow label="Market name" value={marketName} />
-              <ReviewRow
-                label="Mint"
-                value={`${mintInput.slice(0, 8)}…${mintInput.slice(-6)}`}
-              />
-              <ReviewRow
-                label="Tier"
-                value={TIER_OPTIONS.find((t) => t.key === selectedTier)?.label ?? selectedTier}
-              />
-              <ReviewRow label="Oracle mode" value="Admin (devnet)" />
-              {tokenMeta && (
-                <ReviewRow
-                  label="Initial price"
-                  value={`$${(Number(tokenMeta.initial_price_e6) / 1_000_000).toFixed(4)}`}
-                />
-              )}
-            </Panel>
-
-            <View style={styles.warningBox}>
-              <Text style={styles.warningText}>
-                ⚠️ Your wallet must hold enough tokens for vault seed (500), LP collateral
-                (1,000), and insurance (100) — plus SOL for slab rent. Make sure your wallet is
-                funded before deploying.
+            <View style={styles.stepHeader}>
+              <Text style={styles.stepHeaderText}>
+                STEP 3 / {STEP_LABELS.length} — REVIEW
               </Text>
             </View>
 
+            {/* Market Preview (match web) */}
+            <Text style={styles.sectionLabel}>MARKET PREVIEW</Text>
+            <Panel style={styles.marketPreview}>
+              <View style={styles.marketPreviewHeader}>
+                <View style={styles.tokenCardRow}>
+                  <View style={styles.tokenAvatar}>
+                    <Text style={styles.tokenAvatarText}>
+                      {(tokenMeta?.symbol ?? '??').slice(0, 2).toUpperCase()}
+                    </Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.marketTitle}>{marketName || 'UNKNOWN-PERP'}</Text>
+                    <Text style={styles.marketSubtitle}>
+                      Oracle: {oracleLabel}
+                    </Text>
+                    <Text style={styles.marketMint}>
+                      Mint: {mintInput.slice(0, 8)}...{mintInput.slice(-6)}
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.badgeRow}>
+                  <View style={styles.badge}>
+                    <Text style={styles.badgeText}>{tradingFeeBps} bps</Text>
+                  </View>
+                  <View style={styles.badge}>
+                    <Text style={styles.badgeText}>{maxLeverage}x</Text>
+                  </View>
+                  <View style={[styles.badge, styles.badgeAccent]}>
+                    <Text style={[styles.badgeText, styles.badgeAccentText]}>
+                      {TIER_OPTIONS.find((t) => t.key === selectedTier)?.label ?? selectedTier}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            </Panel>
+
+            {/* Cost breakdown */}
+            <Text style={styles.sectionLabel}>COST ESTIMATE</Text>
+            <Panel style={styles.reviewPanel}>
+              <ReviewRow
+                label="Slab rent"
+                value={`${TIER_OPTIONS.find((t) => t.key === selectedTier)?.rentSol ?? '?'} SOL`}
+              />
+              <ReviewRow label="Network fees" value="~0.025 SOL" />
+            </Panel>
+
+            {/* Devnet token notice (match web) */}
+            <View style={styles.devnetBanner}>
+              <Text style={styles.devnetBannerTitle}>
+                ✓ Devnet mode.{' '}
+                <Text style={styles.devnetBannerBody}>
+                  Your wallet will receive devnet {tokenMeta?.symbol ?? 'tokens'} automatically after the market is created.
+                </Text>
+              </Text>
+              <Text style={styles.devnetBannerSub}>
+                No tokens needed upfront — tokens are airdropped post-launch for testing.
+              </Text>
+            </View>
+
+            {/* Transaction steps (match web) */}
+            <Text style={styles.sectionLabel}>TRANSACTION STEPS</Text>
+            <Panel style={styles.txStepsPanel}>
+              {TX_STEPS.map((step, i) => (
+                <View key={i} style={styles.txStepRow}>
+                  <Text style={styles.txStepNum}>{i + 1}.</Text>
+                  <Text style={styles.txStepLabel}>{step.label}</Text>
+                </View>
+              ))}
+            </Panel>
+            <Text style={styles.txStepNote}>
+              {TX_STEPS.length} transactions — each requires a wallet signature. Step 1 is atomic: if it fails, no SOL is lost.
+            </Text>
+
+            {/* Launch / Connect button (match web labels) */}
             {!connected ? (
               <TouchableOpacity
                 style={styles.primaryBtn}
@@ -557,7 +610,7 @@ export function MarketCreationScreen() {
                 {connecting ? (
                   <ActivityIndicator color={colors.text} size="small" />
                 ) : (
-                  <Text style={styles.primaryBtnText}>Connect Wallet 🔗</Text>
+                  <Text style={styles.primaryBtnText}>CONNECT WALLET TO LAUNCH</Text>
                 )}
               </TouchableOpacity>
             ) : (
@@ -566,16 +619,16 @@ export function MarketCreationScreen() {
                 onPress={handleDeploy}
                 activeOpacity={0.8}
               >
-                <Text style={styles.primaryBtnText}>Deploy Market 🚀</Text>
+                <Text style={styles.primaryBtnText}>LAUNCH & MINT TOKENS →</Text>
               </TouchableOpacity>
             )}
 
             <TouchableOpacity
               style={[styles.secondaryBtn, { alignSelf: 'center' }]}
-              onPress={() => setWizardStep('oracle')}
+              onPress={() => setWizardStep('slab-tier')}
               activeOpacity={0.8}
             >
-              <Text style={styles.secondaryBtnText}>← Back</Text>
+              <Text style={styles.secondaryBtnText}>← BACK</Text>
             </TouchableOpacity>
           </>
         )}
@@ -584,23 +637,10 @@ export function MarketCreationScreen() {
   );
 }
 
-/* ── Helper: review row ──────────────────────────────────────────── */
-function ReviewRow({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.reviewRow}>
-      <Text style={styles.reviewLabel}>{label}</Text>
-      <Text style={styles.reviewValue}>{value}</Text>
-    </View>
-  );
-}
-
 /* ── Styles ──────────────────────────────────────────────────────── */
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgVoid },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 12,
   },
@@ -610,44 +650,116 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.text,
   },
-  stepIndicator: { flexDirection: 'row', gap: 6 },
+
+  /* Step indicator (match web mobile breakpoint) */
+  stepIndicatorContainer: { paddingHorizontal: 16, marginBottom: 8 },
+  stepIndicatorRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  stepIndicatorText: {
+    fontFamily: fonts.body,
+    fontSize: 12,
+    fontWeight: '500',
+    color: colors.text,
+  },
+  stepDots: { flexDirection: 'row', gap: 4 },
   stepDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
     backgroundColor: colors.border,
   },
-  stepDotActive: { backgroundColor: colors.accent, width: 20 },
-  stepDotDone: { backgroundColor: colors.long },
+  stepDotActive: { backgroundColor: `${colors.accent}99` },
+  stepDotDone: { backgroundColor: colors.accent },
+
+  /* Step sub-header (match web "STEP X / 4 — Label") */
+  stepHeader: {
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    paddingBottom: 12,
+    marginBottom: 16,
+  },
+  stepHeaderText: {
+    fontFamily: fonts.body,
+    fontSize: 10,
+    fontWeight: '500',
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 1.5,
+  },
 
   scroll: { flex: 1 },
   content: { padding: 16, gap: 16, paddingBottom: 40 },
 
-  sectionTitle: {
-    fontFamily: fonts.display,
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.text,
+  /* Field labels (match web uppercase labels) */
+  fieldLabel: {
+    fontFamily: fonts.body,
+    fontSize: 11,
+    fontWeight: '500',
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: -8,
   },
+
+  sectionLabel: {
+    fontFamily: fonts.body,
+    fontSize: 9,
+    fontWeight: '500',
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 1.5,
+  },
+
   sectionDesc: {
     fontFamily: fonts.body,
-    fontSize: 13,
+    fontSize: 11,
     color: colors.textSecondary,
-    lineHeight: 18,
+    lineHeight: 16,
     marginTop: -8,
   },
 
   /* Token metadata */
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  metaLoading: { fontFamily: fonts.body, fontSize: 13, color: colors.textMuted },
-  metaError: { fontFamily: fonts.body, fontSize: 13, color: colors.short },
+  metaLoading: { fontFamily: fonts.body, fontSize: 10, color: colors.textMuted },
+  metaError: { fontFamily: fonts.body, fontSize: 10, color: colors.short },
 
   tokenCard: { gap: 8 },
+  tokenCardRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  tokenAvatar: {
+    width: 32,
+    height: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: `${colors.accent}4D`,
+    backgroundColor: `${colors.accent}14`,
+  },
+  tokenAvatarText: {
+    fontFamily: fonts.display,
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.accent,
+  },
   tokenSymbol: {
     fontFamily: fonts.display,
-    fontSize: 20,
-    fontWeight: '700',
+    fontSize: 13,
+    fontWeight: '600',
     color: colors.text,
+  },
+  tokenNameInline: {
+    fontFamily: fonts.body,
+    fontSize: 11,
+    fontWeight: '400',
+    color: colors.textSecondary,
+  },
+  tokenMintTruncated: {
+    fontFamily: fonts.mono,
+    fontSize: 10,
+    color: colors.textMuted,
+    marginTop: 2,
   },
   tokenName: {
     fontFamily: fonts.body,
@@ -662,7 +774,7 @@ const styles = StyleSheet.create({
   },
   tokenMetaLabel: {
     fontFamily: fonts.body,
-    fontSize: 12,
+    fontSize: 10,
     color: colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.4,
@@ -672,6 +784,13 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.textSecondary,
     fontVariant: ['tabular-nums'],
+  },
+
+  /* Oracle status */
+  oracleStatus: {
+    fontFamily: fonts.body,
+    fontSize: 10,
+    color: colors.textMuted,
   },
 
   /* Tier picker */
@@ -727,21 +846,50 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
 
-  costTable: { gap: 4, marginTop: 4 },
-  costRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  /* Market preview (match web) */
+  marketPreview: { gap: 12 },
+  marketPreviewHeader: { gap: 8 },
+  marketTitle: {
+    fontFamily: fonts.display,
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.text,
   },
-  costLabel: {
+  marketSubtitle: {
     fontFamily: fonts.body,
-    fontSize: 11,
+    fontSize: 10,
     color: colors.textMuted,
   },
-  costValue: {
+  marketMint: {
     fontFamily: fonts.mono,
-    fontSize: 11,
-    color: colors.textSecondary,
-    fontVariant: ['tabular-nums'],
+    fontSize: 9,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  badgeRow: { flexDirection: 'row', gap: 6, marginTop: 4 },
+  badge: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.bgElevated,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  badgeText: {
+    fontFamily: fonts.body,
+    fontSize: 9,
+    fontWeight: '500',
+    color: colors.textMuted,
+  },
+  badgeAccent: {
+    borderColor: `${colors.accent}33`,
+    backgroundColor: `${colors.accent}0F`,
+  },
+  badgeAccentText: {
+    fontFamily: fonts.body,
+    fontSize: 9,
+    fontWeight: '700',
+    color: colors.accent,
+    textTransform: 'uppercase',
   },
 
   /* Review */
@@ -763,18 +911,52 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
 
-  warningBox: {
-    backgroundColor: colors.bgElevated,
-    borderRadius: radii.md,
+  /* Devnet banner (match web) */
+  devnetBanner: {
     borderWidth: 1,
-    borderColor: colors.warning,
+    borderColor: `${colors.long}33`,
+    backgroundColor: `${colors.long}0A`,
     padding: 12,
+    gap: 4,
   },
-  warningText: {
+  devnetBannerTitle: {
+    fontFamily: fonts.body,
+    fontSize: 11,
+    color: colors.text,
+  },
+  devnetBannerBody: {
+    fontWeight: '400',
+  },
+  devnetBannerSub: {
+    fontFamily: fonts.body,
+    fontSize: 9,
+    color: colors.textMuted,
+  },
+
+  /* Transaction steps (match web) */
+  txStepsPanel: { gap: 8 },
+  txStepRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  txStepNum: {
+    fontFamily: fonts.mono,
+    fontSize: 10,
+    color: colors.textMuted,
+    marginTop: 1,
+  },
+  txStepLabel: {
     fontFamily: fonts.body,
     fontSize: 12,
-    color: colors.warning,
-    lineHeight: 17,
+    color: colors.textMuted,
+    flex: 1,
+  },
+  txStepNote: {
+    fontFamily: fonts.body,
+    fontSize: 10,
+    color: colors.textMuted,
+    marginTop: -8,
   },
 
   /* Deploy progress */
@@ -840,8 +1022,15 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: colors.textMuted,
   },
+  devnetNote: {
+    fontFamily: fonts.body,
+    fontSize: 11,
+    color: colors.long,
+    textAlign: 'center',
+    marginTop: 8,
+  },
 
-  /* Buttons */
+  /* Buttons (match web uppercase style) */
   primaryBtn: {
     backgroundColor: colors.accent,
     height: 52,
@@ -853,9 +1042,11 @@ const styles = StyleSheet.create({
   primaryBtnDisabled: { opacity: 0.4 },
   primaryBtnText: {
     fontFamily: fonts.display,
-    fontSize: 16,
+    fontSize: 13,
     fontWeight: '700',
     color: colors.text,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
   },
   secondaryBtn: {
     height: 44,
@@ -868,8 +1059,11 @@ const styles = StyleSheet.create({
   },
   secondaryBtnText: {
     fontFamily: fonts.body,
-    fontSize: 14,
+    fontSize: 12,
+    fontWeight: '500',
     color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
   },
 
   navRow: { flexDirection: 'row', gap: 10 },

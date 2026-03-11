@@ -49,13 +49,13 @@ export interface CreateMarketState {
   slabAddress: string | null;
 }
 
+// Match web useCreateMarket STEP_LABELS exactly
 const STEP_LABELS = [
-  'Building transactions…',
-  'Creating slab & initializing market…',
-  'Oracle setup & crank…',
-  'Initializing LP…',
-  'Depositing collateral & insurance…',
-  'Creating insurance mint…',
+  'Creating slab & initializing market...',
+  'Oracle setup & pre-LP crank...',
+  'Initializing LP...',
+  'Depositing collateral, insurance & final crank...',
+  'Creating insurance LP mint...',
 ];
 
 export function useCreateMarket() {
@@ -156,13 +156,8 @@ export function useCreateMarket() {
         }
 
         // ── Steps 1–5: Sign and send each transaction via MWA ─────────────────
-        const stepLabels = [
-          'Signing: create slab & init market…',
-          'Signing: oracle setup & crank…',
-          'Signing: init LP…',
-          'Signing: deposit collateral & insurance…',
-          'Signing: create insurance mint…',
-        ];
+        // Match web STEP_LABELS for consistency
+        const stepLabels = STEP_LABELS;
 
         let firstSignature: string | null = null;
         for (let i = 0; i < txBytes.length; i++) {

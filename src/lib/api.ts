@@ -6,8 +6,9 @@
  * - Next.js API: percolatorlaunch.com/api (leaderboard, trader stats, stake pools, market creation)
  */
 
-// Railway direct URL — api.percolatorlaunch.com DNS is misconfigured
-const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'https://percolator-api-production.up.railway.app';
+// All market/stats data served via percolatorlaunch.com/api (Next.js proxy to Supabase).
+// The old Railway direct URL requires auth headers not available on mobile.
+const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'https://percolatorlaunch.com/api';
 const WEB_API_BASE = process.env.EXPO_PUBLIC_WEB_URL ?? 'https://percolatorlaunch.com/api';
 
 interface MarketData {

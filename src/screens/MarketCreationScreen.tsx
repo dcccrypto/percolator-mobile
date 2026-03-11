@@ -1,11 +1,15 @@
 /**
  * MarketCreationScreen — mobile market creation wizard (GH #80).
  *
- * Matches web wizard flow:
+ * Matches web wizard flow (quick-launch mode):
  *  Step 1 — Token mint address input (auto-detects name/symbol from /api/launch)
  *  Step 2 — Slab tier picker with SOL cost breakdown
  *  Step 3 — Oracle mode (auto-detected from DEX pool, or admin fallback)
+ *  Review  — confirm params, launch market
  *  Deploy  — 5-step progress via useCreateMarket → /api/mobile/create-market
+ *
+ * Copy parity: all labels, button text, step names, and helper strings must
+ * match CreateMarketWizard.tsx + LaunchProgress.tsx on the web app.
  */
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
@@ -83,21 +87,32 @@ const WEB_API_BASE =
 
 /* ── Step progress bar ───────────────────────────────────────────── */
 
+// Deploy step labels must match LaunchProgress.tsx on the web app exactly.
 const DEPLOY_STEPS = [
-  'Building txs…',
-  'Create slab & init market',
+  'Create slab & initialize market',
   'Oracle setup & crank',
-  'Init LP',
-  'Deposit & insurance',
-  'Insurance mint',
+  'Initialize LP',
+  'Deposit, insurance & finalize',
+  'Insurance LP mint',
 ];
 
+/**
+ * DeployProgress — mirrors LaunchProgress.tsx on web.
+ * stepIndex is 0-based index into the 5 DEPLOY_STEPS.
+ * When the hook is in "building txs" state (stepIndex 0 of the old 6-step),
+ * we treat it as step 0 active here too (no separate "building" step).
+ */
 function DeployProgress({ stepIndex }: { stepIndex: number }) {
+  // Hook step 0 = "Building transactions" (server call) — map to step 0 active (no prior done)
+  // Hook step 1-5 = TX steps 0-4 in DEPLOY_STEPS
+  const displayIndex = Math.max(0, stepIndex - 1); // shift: hook step 1 → display step 0
+  const isBuilding = stepIndex === 0;
+
   return (
     <View style={styles.progressContainer}>
       {DEPLOY_STEPS.map((label, i) => {
-        const done = i < stepIndex;
-        const active = i === stepIndex;
+        const done = !isBuilding && i < displayIndex;
+        const active = isBuilding ? i === 0 : i === displayIndex;
         return (
           <View key={i} style={styles.progressRow}>
             <View
@@ -250,10 +265,15 @@ export function MarketCreationScreen() {
 
   /* ── Render: Deploying ─────────────────────────────────────────── */
   if (wizardStep === 'deploying') {
+    // Display step: hook step 0 = building (show "1 of 5"), hook step 1-5 = TX 1-5
+    const displayStep = Math.max(1, deployState.stepIndex);
+    const retryLabel = `Retry Step ${displayStep}`;
+
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <View style={styles.header}>
-          <Text style={styles.title}>Deploying Market…</Text>
+          {/* "Launching Market" matches web LaunchProgress heading */}
+          <Text style={styles.title}>Launching Market</Text>
         </View>
         {deployState.error ? (
           <View style={styles.content}>
@@ -263,13 +283,16 @@ export function MarketCreationScreen() {
               onPress={() => setWizardStep('review')}
               activeOpacity={0.8}
             >
-              <Text style={styles.primaryBtnText}>Try Again</Text>
+              <Text style={styles.primaryBtnText}>{retryLabel}</Text>
             </TouchableOpacity>
           </View>
         ) : (
           <View style={styles.content}>
             <DeployProgress stepIndex={deployState.stepIndex} />
-            <Text style={styles.stepDetail}>{deployState.step}</Text>
+            {/* "Step X of 5 — Sign the transaction in your wallet" matches web */}
+            <Text style={styles.stepDetail}>
+              Step {displayStep} of 5 — Sign the transaction in your wallet
+            </Text>
           </View>
         )}
       </SafeAreaView>
@@ -281,10 +304,10 @@ export function MarketCreationScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <Text style={styles.title}>Create Market</Text>
-        {/* BUG-5: 5-step indicator matching web (mint → tier → oracle → review → deploy) */}
+        {/* 4-step indicator matching web quick-mode (Token / Slab Tier / Oracle / Review) */}
         <View style={styles.stepIndicator}>
-          {(['mint', 'tier', 'oracle', 'review', 'deploying'] as const).map((s, i) => {
-            const STEPS = ['mint', 'tier', 'oracle', 'review', 'deploying'];
+          {(['mint', 'tier', 'oracle', 'review'] as const).map((s, i) => {
+            const STEPS = ['mint', 'tier', 'oracle', 'review'];
             const currentIdx = STEPS.indexOf(wizardStep);
             const isDone = i < currentIdx;
             const isActive = s === wizardStep;
@@ -311,17 +334,15 @@ export function MarketCreationScreen() {
         keyboardShouldPersistTaps="handled"
       >
         {/* ── Step 1: Mint input ─────────────────────────────── */}
+        {/* Copy parity: label "Token Mint Address", placeholder "Paste mint address..." */}
         {wizardStep === 'mint' && (
           <>
-            <Text style={styles.sectionTitle}>Token Mint Address</Text>
-            <Text style={styles.sectionDesc}>
-              Paste the Solana SPL token mint address for your perpetual market.
-            </Text>
+            <Text style={styles.sectionTitle}>Token</Text>
             <InputField
-              label="Mint Address"
+              label="Token Mint Address"
               value={mintInput}
               onChangeText={handleMintChange}
-              placeholder="e.g. So11111111111111111111111111111111111111112"
+              placeholder="Paste mint address..."
               autoCapitalize="none"
               autoCorrect={false}
             />
@@ -380,7 +401,7 @@ export function MarketCreationScreen() {
               disabled={!mintInput.trim() || metaLoading}
               activeOpacity={0.8}
             >
-              <Text style={styles.primaryBtnText}>Next: Choose Tier →</Text>
+              <Text style={styles.primaryBtnText}>CONTINUE →</Text>
             </TouchableOpacity>
           </>
         )}
@@ -389,9 +410,9 @@ export function MarketCreationScreen() {
         {wizardStep === 'tier' && (
           <>
             <Text style={styles.sectionTitle}>Slab Tier</Text>
+            {/* Copy parity: matches web "Choose your market size." description */}
             <Text style={styles.sectionDesc}>
-              Choose how many trader accounts your market supports. More accounts = higher
-              SOL rent cost.
+              Choose your market size. Larger slabs support more concurrent traders but cost more SOL to deploy.
             </Text>
 
             {TIER_OPTIONS.map((t) => (
@@ -442,14 +463,14 @@ export function MarketCreationScreen() {
                 onPress={() => setWizardStep('mint')}
                 activeOpacity={0.8}
               >
-                <Text style={styles.secondaryBtnText}>← Back</Text>
+                <Text style={styles.secondaryBtnText}>← BACK</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.primaryBtn, styles.primaryBtnFlex]}
                 onPress={() => setWizardStep('oracle')}
                 activeOpacity={0.8}
               >
-                <Text style={styles.primaryBtnText}>Next: Oracle →</Text>
+                <Text style={styles.primaryBtnText}>CONTINUE →</Text>
               </TouchableOpacity>
             </View>
           </>
@@ -497,7 +518,7 @@ export function MarketCreationScreen() {
                 onPress={() => setWizardStep('tier')}
                 activeOpacity={0.8}
               >
-                <Text style={styles.secondaryBtnText}>← Back</Text>
+                <Text style={styles.secondaryBtnText}>← BACK</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[
@@ -509,7 +530,7 @@ export function MarketCreationScreen() {
                 disabled={!marketName.trim()}
                 activeOpacity={0.8}
               >
-                <Text style={styles.primaryBtnText}>Review →</Text>
+                <Text style={styles.primaryBtnText}>CONTINUE →</Text>
               </TouchableOpacity>
             </View>
           </>
@@ -557,7 +578,8 @@ export function MarketCreationScreen() {
                 {connecting ? (
                   <ActivityIndicator color={colors.text} size="small" />
                 ) : (
-                  <Text style={styles.primaryBtnText}>Connect Wallet 🔗</Text>
+                  /* "Connect Wallet to Launch" matches web StepReview button label */
+                  <Text style={styles.primaryBtnText}>Connect Wallet to Launch</Text>
                 )}
               </TouchableOpacity>
             ) : (
@@ -566,7 +588,8 @@ export function MarketCreationScreen() {
                 onPress={handleDeploy}
                 activeOpacity={0.8}
               >
-                <Text style={styles.primaryBtnText}>Deploy Market 🚀</Text>
+                {/* "LAUNCH & MINT TOKENS →" matches web devnet label in StepReview */}
+                <Text style={styles.primaryBtnText}>LAUNCH & MINT TOKENS →</Text>
               </TouchableOpacity>
             )}
 
@@ -575,7 +598,7 @@ export function MarketCreationScreen() {
               onPress={() => setWizardStep('oracle')}
               activeOpacity={0.8}
             >
-              <Text style={styles.secondaryBtnText}>← Back</Text>
+              <Text style={styles.secondaryBtnText}>← BACK</Text>
             </TouchableOpacity>
           </>
         )}

@@ -183,7 +183,9 @@ export function LeaderboardScreen() {
       setLoading(true);
       setError(null);
       const data = await api.getLeaderboard(period);
-      setTraders(data.leaderboard ?? data.traders ?? []);
+      const raw = data.leaderboard ?? data.traders ?? [];
+      // Guard against null/malformed entries from API (GH #109)
+      setTraders(Array.isArray(raw) ? raw.filter((t): t is LeaderboardEntry => t != null && typeof t.wallet === 'string') : []);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to load leaderboard';
       setError(msg.includes('429') ? 'Too many requests — pull to refresh' : msg);
@@ -196,7 +198,7 @@ export function LeaderboardScreen() {
     fetchLeaderboard();
   }, [fetchLeaderboard]);
 
-  const totalVolume = traders.reduce((sum, t) => sum + t.volume, 0);
+  const totalVolume = traders.reduce((sum, t) => sum + (t.volume ?? 0), 0);
 
   const currentUserEntry = walletAddress
     ? traders.find((t) => t.wallet === walletAddress)

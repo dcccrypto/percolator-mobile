@@ -10,7 +10,7 @@ function buildWsUrl(): string {
   if (process.env.EXPO_PUBLIC_WS_URL) {
     return process.env.EXPO_PUBLIC_WS_URL;
   }
-  const apiKey = process.env.EXPO_PUBLIC_HELIUS_API_KEY;
+  const apiKey = process.env.EXPO_PUBLIC_HELIUS_API_KEY ?? 'ecfc91c7-b704-4c37-b10e-a277392830aa';
   if (!apiKey) {
     console.warn(
       '[usePriceStream] EXPO_PUBLIC_HELIUS_API_KEY is not set. ' +

@@ -49,7 +49,7 @@ describe('api', () => {
         statusText: 'Internal Server Error',
       });
 
-      await expect(api.getMarkets()).rejects.toThrow('API 500');
+      await expect(api.getMarkets()).rejects.toThrow('Request failed');
     });
   });
 

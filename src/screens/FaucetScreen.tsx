@@ -132,7 +132,7 @@ export function FaucetScreen() {
   }, [connected, publicKey, airdropState, refreshBalance, showToast]);
 
   const handleMintTokens = useCallback(async () => {
-    if (!caInput.trim() || mintLoading) return;
+    if (!connected || !publicKey || !caInput.trim() || mintLoading) return;
     setMintLoading(true);
     try {
       // Backend faucet endpoint: POST /api/faucet/mint
@@ -166,7 +166,7 @@ export function FaucetScreen() {
       ? '✓ 2 SOL Requested'
       : 'REQUEST SOL AIRDROP';
 
-  const mintDisabled = !caInput.trim() || mintLoading;
+  const mintDisabled = !connected || !publicKey || !caInput.trim() || mintLoading;
 
   return (
     <SafeAreaView style={styles.root} edges={['top', 'bottom']}>

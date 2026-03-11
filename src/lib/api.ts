@@ -114,7 +114,13 @@ export interface StakePool {
 
 async function fetchJSON<T>(url: string): Promise<T> {
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`API ${res.status}: ${res.statusText}`);
+  if (!res.ok) {
+    if (res.status === 429) {
+      throw new Error('Too many requests — please wait a moment and try again');
+    }
+    const statusText = res.statusText || `Error ${res.status}`;
+    throw new Error(`Request failed: ${statusText}`);
+  }
   return res.json();
 }
 

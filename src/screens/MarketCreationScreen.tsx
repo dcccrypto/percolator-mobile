@@ -20,6 +20,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
 import { colors, radii } from '../theme/tokens';
 import { fonts } from '../theme/fonts';
 import { Panel } from '../components/ui/Panel';
@@ -182,6 +183,7 @@ function ReviewRow({ label, value }: { label: string; value: string }) {
 /* ── Main screen ─────────────────────────────────────────────────── */
 
 export function MarketCreationScreen() {
+  const navigation = useNavigation();
   const { connected, connect, connecting } = useMWA();
   const { state: deployState, deploy, reset } = useCreateMarket();
 
@@ -342,7 +344,15 @@ export function MarketCreationScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          style={styles.closeBtn}
+        >
+          <Text style={styles.closeBtnText}>✕</Text>
+        </TouchableOpacity>
         <Text style={styles.title}>Create Market</Text>
+        <View style={{ width: 32 }} />
       </View>
 
       {/* Step indicator (match web: "Step X of N — Label" + dots) */}
@@ -641,8 +651,22 @@ export function MarketCreationScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgVoid },
   header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 12,
+  },
+  closeBtn: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  closeBtnText: {
+    fontSize: 18,
+    color: colors.textSecondary,
+    fontWeight: '600',
   },
   title: {
     fontFamily: fonts.display,

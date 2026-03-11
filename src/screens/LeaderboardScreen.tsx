@@ -185,7 +185,8 @@ export function LeaderboardScreen() {
       const data = await api.getLeaderboard(period);
       setTraders(data.leaderboard ?? data.traders ?? []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load leaderboard');
+      const msg = err instanceof Error ? err.message : 'Failed to load leaderboard';
+      setError(msg.includes('429') ? 'Too many requests — pull to refresh' : msg);
     } finally {
       setLoading(false);
     }

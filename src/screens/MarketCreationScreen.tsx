@@ -418,7 +418,7 @@ export function MarketCreationScreen() {
                   <>
                     <View style={styles.tokenMetaRow}>
                       <Text style={styles.tokenMetaLabel}>POOL DETECTED</Text>
-                      <Text style={[styles.tokenMetaValue, { color: colors.long }]}>
+                      <Text style={[styles.tokenMetaValue, { color: colors.accent }]}>
                         ✓ {tokenMeta.pool.pairLabel}
                       </Text>
                     </View>
@@ -489,7 +489,7 @@ export function MarketCreationScreen() {
             {metaLoading ? (
               <Text style={styles.oracleStatus}>⏳ Detecting oracle...</Text>
             ) : tokenMeta?.pool ? (
-              <Text style={[styles.oracleStatus, { color: colors.long }]}>
+              <Text style={[styles.oracleStatus, { color: colors.accent }]}>
                 ✓ DEX pool detected — permissionless on-chain pricing (no keeper needed)
               </Text>
             ) : (
@@ -571,19 +571,6 @@ export function MarketCreationScreen() {
               />
               <ReviewRow label="Network fees" value="~0.025 SOL" />
             </Panel>
-
-            {/* Devnet token notice (match web) */}
-            <View style={styles.devnetBanner}>
-              <Text style={styles.devnetBannerTitle}>
-                ✓ Devnet mode.{' '}
-                <Text style={styles.devnetBannerBody}>
-                  Your wallet will receive devnet {tokenMeta?.symbol ?? 'tokens'} automatically after the market is created.
-                </Text>
-              </Text>
-              <Text style={styles.devnetBannerSub}>
-                No tokens needed upfront — tokens are airdropped post-launch for testing.
-              </Text>
-            </View>
 
             {/* Transaction steps (match web) */}
             <Text style={styles.sectionLabel}>TRANSACTION STEPS</Text>
@@ -911,28 +898,6 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
 
-  /* Devnet banner (match web) */
-  devnetBanner: {
-    borderWidth: 1,
-    borderColor: `${colors.long}33`,
-    backgroundColor: `${colors.long}0A`,
-    padding: 12,
-    gap: 4,
-  },
-  devnetBannerTitle: {
-    fontFamily: fonts.body,
-    fontSize: 11,
-    color: colors.text,
-  },
-  devnetBannerBody: {
-    fontWeight: '400',
-  },
-  devnetBannerSub: {
-    fontFamily: fonts.body,
-    fontSize: 9,
-    color: colors.textMuted,
-  },
-
   /* Transaction steps (match web) */
   txStepsPanel: { gap: 8 },
   txStepRow: {
@@ -973,8 +938,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   progressDotDone: {
-    borderColor: colors.long,
-    backgroundColor: colors.long,
+    borderColor: colors.accent,
+    backgroundColor: colors.accent,
   },
   progressDotActive: {
     borderColor: colors.accent,
@@ -986,7 +951,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.textMuted,
   },
-  progressLabelDone: { color: colors.long },
+  progressLabelDone: { color: colors.accent },
   progressLabelActive: { color: colors.text, fontWeight: '600' },
   stepDetail: {
     fontFamily: fonts.mono,
@@ -1009,7 +974,7 @@ const styles = StyleSheet.create({
     fontFamily: fonts.display,
     fontSize: 18,
     fontWeight: '700',
-    color: colors.long,
+    color: colors.accent,
     textAlign: 'center',
   },
   doneAddress: {
@@ -1025,7 +990,7 @@ const styles = StyleSheet.create({
   devnetNote: {
     fontFamily: fonts.body,
     fontSize: 11,
-    color: colors.long,
+    color: colors.textSecondary,
     textAlign: 'center',
     marginTop: 8,
   },

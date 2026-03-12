@@ -1,6 +1,9 @@
 import { renderHook, act } from '@testing-library/react-native';
 import { usePriceFlash } from '../../src/hooks/usePriceFlash';
 
+// renderHook generic typing in @testing-library/react-native doesn't support initialProps destructuring
+const typedRenderHook = renderHook as any;
+
 describe('usePriceFlash', () => {
   beforeEach(() => {
     jest.useFakeTimers();
@@ -11,13 +14,13 @@ describe('usePriceFlash', () => {
   });
 
   it('returns null initially', () => {
-    const { result } = renderHook(() => usePriceFlash(100));
+    const { result } = typedRenderHook(() => usePriceFlash(100));
     expect(result.current).toBeNull();
   });
 
   it('returns "up" when price increases', () => {
-    const { result, rerender } = renderHook(
-      ({ price }) => usePriceFlash(price),
+    const { result, rerender } = typedRenderHook(
+      ({ price }: { price: number }) => usePriceFlash(price),
       { initialProps: { price: 100 } },
     );
 
@@ -26,8 +29,8 @@ describe('usePriceFlash', () => {
   });
 
   it('returns "down" when price decreases', () => {
-    const { result, rerender } = renderHook(
-      ({ price }) => usePriceFlash(price),
+    const { result, rerender } = typedRenderHook(
+      ({ price }: { price: number }) => usePriceFlash(price),
       { initialProps: { price: 100 } },
     );
 
@@ -36,8 +39,8 @@ describe('usePriceFlash', () => {
   });
 
   it('resets to null after duration', () => {
-    const { result, rerender } = renderHook(
-      ({ price }) => usePriceFlash(price, 300),
+    const { result, rerender } = typedRenderHook(
+      ({ price }: { price: number }) => usePriceFlash(price, 300),
       { initialProps: { price: 100 } },
     );
 
@@ -51,18 +54,18 @@ describe('usePriceFlash', () => {
   });
 
   it('ignores null price', () => {
-    const { result } = renderHook(() => usePriceFlash(null));
+    const { result } = typedRenderHook(() => usePriceFlash(null));
     expect(result.current).toBeNull();
   });
 
   it('ignores zero price', () => {
-    const { result } = renderHook(() => usePriceFlash(0));
+    const { result } = typedRenderHook(() => usePriceFlash(0));
     expect(result.current).toBeNull();
   });
 
   it('no flash on same price', () => {
-    const { result, rerender } = renderHook(
-      ({ price }) => usePriceFlash(price),
+    const { result, rerender } = typedRenderHook(
+      ({ price }: { price: number }) => usePriceFlash(price),
       { initialProps: { price: 100 } },
     );
 

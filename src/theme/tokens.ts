@@ -38,12 +38,11 @@ export const colors = {
   warningSubtle: 'rgba(229, 161, 0, 0.08)',
   warningBorder: 'rgba(229, 161, 0, 0.2)',
 
-  // Highlights — Solana green (same as --cyan on web).
-  // NOTE: cyan and long are intentionally aliased to the same Solana green
-  // (#14F195). cyan = UI highlights, long = buy-side trading. Kept as
-  // separate semantic tokens so either can diverge independently later.
-  cyan: '#14F195',
-  cyanMuted: 'rgba(20, 241, 149, 0.08)',
+  // Highlights — true cyan (#22d3ee). PERC-603: diverged from Solana-green
+  // (#14F195). cyan = UI highlights / onboarding accents. long = buy-side
+  // trading. Kept as separate semantic tokens so each tracks its own role.
+  cyan: '#22d3ee',
+  cyanMuted: 'rgba(34, 211, 238, 0.08)',
 
   // Overlays
   bgOverlay: 'rgba(255, 255, 255, 0.06)',

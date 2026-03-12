@@ -168,7 +168,7 @@ function TradeRow({ trade }: { trade: TraderTrade }) {
 }
 
 function EmptyNotConnected() {
-  let navigation: ReturnType<typeof useNavigation> | null = null;
+  let navigation: any = null;
   try { navigation = useNavigation(); } catch { /* test env */ }
   return (
     <View style={styles.emptyContainer}>

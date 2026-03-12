@@ -18,6 +18,7 @@ interface Market {
   status: string;
   change24h: number;
   logoUrl: string | null;
+  decimals: number;
 }
 
 function mapMarket(m: any): Market {
@@ -35,6 +36,7 @@ function mapMarket(m: any): Market {
     status: m.status,
     change24h: 0,
     logoUrl: m.logoUrl ?? null,
+    decimals: m.decimals ?? 6,
   };
 }
 

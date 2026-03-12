@@ -183,7 +183,7 @@ export function LeaderboardScreen() {
       setLoading(true);
       setError(null);
       const data = await api.getLeaderboard(period);
-      const raw = data.leaderboard ?? data.traders ?? [];
+      const raw = (data as any).leaderboard ?? data.traders ?? [];
       // Guard against null/malformed entries from API (GH #109)
       setTraders(Array.isArray(raw) ? raw.filter((t): t is LeaderboardEntry => t != null && typeof t.wallet === 'string') : []);
     } catch (err) {

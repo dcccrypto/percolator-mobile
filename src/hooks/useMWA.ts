@@ -13,9 +13,11 @@ export function useMWA() {
   const wallet = useWalletStore();
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // GH #77 — replaces Alert.alert for no-wallet errors with a branded sheet
-  const [showInstallSheet, setShowInstallSheet] = useState(false);
-  const dismissInstallSheet = useCallback(() => setShowInstallSheet(false), []);
+  // GH #111 — showInstallSheet moved to walletStore (global) so all screens
+  // share the same flag and RootNavigator's ConnectWalletSheet fires correctly.
+  const showInstallSheet = useWalletStore((s) => s.showInstallSheet);
+  const setShowInstallSheet = useWalletStore((s) => s.setShowInstallSheet);
+  const dismissInstallSheet = useCallback(() => setShowInstallSheet(false), [setShowInstallSheet]);
 
   const connect = useCallback(async () => {
     setConnecting(true);

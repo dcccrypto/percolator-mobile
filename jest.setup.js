@@ -173,6 +173,9 @@ const mockWalletStore = {
   connected: false,
   publicKey: null,
   balance: null,
+  // GH #111 — global flag moved from local useMWA state to walletStore so
+  // ConnectWalletSheet in RootNavigator fires from any screen.
+  showInstallSheet: false,
   setConnected: jest.fn((pubkey) => {
     mockWalletStore.connected = true;
     mockWalletStore.publicKey = pubkey;
@@ -185,9 +188,19 @@ const mockWalletStore = {
   setBalance: jest.fn((bal) => {
     mockWalletStore.balance = bal;
   }),
+  setShowInstallSheet: jest.fn((show) => {
+    mockWalletStore.showInstallSheet = show;
+  }),
 };
 jest.mock('./src/store/walletStore', () => ({
-  useWalletStore: jest.fn(() => mockWalletStore),
+  useWalletStore: jest.fn((selector) => {
+    // Support both hook calls (no selector) and selector calls
+    // e.g. useWalletStore(s => s.showInstallSheet)
+    if (typeof selector === 'function') {
+      return selector(mockWalletStore);
+    }
+    return mockWalletStore;
+  }),
 }));
 
 // --------------------------------------------------------------------------

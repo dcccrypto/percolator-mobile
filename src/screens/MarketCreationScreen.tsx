@@ -271,11 +271,17 @@ export function MarketCreationScreen() {
     }, 600);
   }, [selectedTier]);
 
-  // Auto-generated market name (match web: SYMBOL-PERP)
+  // Auto-generated market name (match web: SYMBOL-PERP).
+  // GH #111: strip non-alphanumeric chars from symbol instead of hard-blocking
+  // with a strict regex, so tokens like "$WIF" or "DOGE🐕" get a valid name
+  // ("WIF-PERP" / "DOGE-PERP") instead of "UNKNOWN-PERP".
   const marketName = tokenMeta
     ? (() => {
-        const symbolOk = /^[A-Za-z][A-Za-z0-9]{0,11}$/.test(tokenMeta.symbol ?? '');
-        return `${symbolOk ? tokenMeta.symbol : 'UNKNOWN'}-PERP`;
+        const cleaned = (tokenMeta.symbol ?? '')
+          .replace(/[^A-Za-z0-9]/g, '')
+          .slice(0, 12)
+          .toUpperCase();
+        return `${cleaned || 'UNKNOWN'}-PERP`;
       })()
     : '';
 

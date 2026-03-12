@@ -78,4 +78,50 @@ describe('MarketCreationScreen', () => {
     const { getByText } = render(<MarketCreationScreen />);
     expect(getByText('TOKEN MINT ADDRESS')).toBeTruthy();
   });
+
+  it('step 1 renders CONTINUE button (wizard entry point)', () => {
+    // Wizard always starts at Step 1 — "CONTINUE →" is the primary CTA
+    const { getByText } = render(<MarketCreationScreen />);
+    expect(getByText('CONTINUE →')).toBeTruthy();
+  });
+});
+
+// GH #111 — market name sanitisation unit tests (no React needed)
+describe('marketName symbol sanitisation', () => {
+  // Replicate the sanitisation logic from MarketCreationScreen
+  function toMarketName(symbol: string): string {
+    const cleaned = symbol
+      .replace(/[^A-Za-z0-9]/g, '')
+      .slice(0, 12)
+      .toUpperCase();
+    return `${cleaned || 'UNKNOWN'}-PERP`;
+  }
+
+  it('clean alphanumeric symbol passes through', () => {
+    expect(toMarketName('SOL')).toBe('SOL-PERP');
+    expect(toMarketName('WIF')).toBe('WIF-PERP');
+    expect(toMarketName('PERCOLATOR')).toBe('PERCOLATOR-PERP');
+  });
+
+  it('$ prefix is stripped — GH #111 regression', () => {
+    expect(toMarketName('$WIF')).toBe('WIF-PERP');
+    expect(toMarketName('$BONK')).toBe('BONK-PERP');
+  });
+
+  it('emoji is stripped', () => {
+    expect(toMarketName('DOGE🐕')).toBe('DOGE-PERP');
+  });
+
+  it('symbol longer than 12 chars is truncated', () => {
+    expect(toMarketName('AVERYLONGSYMBOLNAME')).toBe('AVERYLONGSYM-PERP');
+  });
+
+  it('empty symbol falls back to UNKNOWN', () => {
+    expect(toMarketName('')).toBe('UNKNOWN-PERP');
+    expect(toMarketName('$$$')).toBe('UNKNOWN-PERP');
+  });
+
+  it('lowercase is uppercased', () => {
+    expect(toMarketName('btc')).toBe('BTC-PERP');
+  });
 });

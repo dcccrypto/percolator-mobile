@@ -37,8 +37,10 @@ const SLIDES: OnboardingSlideData[] = [
   },
   {
     index: 3,
-    title: 'Deploy in 60s',
-    subtitle: 'Create your own perpetual market in under a minute.',
+    // PERC-603: drop "s" suffix — "60s" too close to "60x" leverage notation.
+    // Subtitle spells out "seconds" to keep context unambiguous.
+    title: 'Deploy in 60',
+    subtitle: 'Create your own perpetual market in under 60 seconds.',
   },
 ];
 

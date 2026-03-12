@@ -18,6 +18,7 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
+  BackHandler,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -194,6 +195,34 @@ export function MarketCreationScreen() {
   const [metaLoading, setMetaLoading] = useState(false);
   const [metaError, setMetaError] = useState<string | null>(null);
 
+  // GH #110: Header back arrow navigates wizard steps, not screen stack
+  const handleBack = useCallback(() => {
+    if (wizardStep === 'slab-tier') {
+      setWizardStep('token');
+    } else if (wizardStep === 'review') {
+      setWizardStep('slab-tier');
+    } else {
+      navigation.goBack();
+    }
+  }, [wizardStep, navigation]);
+
+  // GH #110: Intercept Android back button to navigate wizard steps instead of popping screen
+  useEffect(() => {
+    const handler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (wizardStep === 'slab-tier') {
+        setWizardStep('token');
+        return true;
+      }
+      if (wizardStep === 'review') {
+        setWizardStep('slab-tier');
+        return true;
+      }
+      // deploying/done/token — let default navigation handle it
+      return false;
+    });
+    return () => handler.remove();
+  }, [wizardStep]);
+
   // Sync wizard to deploying/done states
   useEffect(() => {
     if (deployState.deploying) setWizardStep('deploying');
@@ -344,15 +373,12 @@ export function MarketCreationScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-          style={styles.closeBtn}
-        >
-          <Text style={styles.closeBtnText}>✕</Text>
-        </TouchableOpacity>
-        <Text style={styles.title}>Create Market</Text>
-        <View style={{ width: 32 }} />
+        <View style={styles.headerRow}>
+          <TouchableOpacity onPress={handleBack} hitSlop={12} activeOpacity={0.7}>
+            <Text style={styles.headerBackArrow}>←</Text>
+          </TouchableOpacity>
+          <Text style={styles.title}>Create Market</Text>
+        </View>
       </View>
 
       {/* Step indicator (match web: "Step X of N — Label" + dots) */}
@@ -657,16 +683,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
   },
-  closeBtn: {
-    width: 32,
-    height: 32,
+  headerRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 12,
   },
-  closeBtnText: {
-    fontSize: 18,
+  headerBackArrow: {
+    fontFamily: fonts.body,
+    fontSize: 20,
     color: colors.textSecondary,
-    fontWeight: '600',
   },
   title: {
     fontFamily: fonts.display,

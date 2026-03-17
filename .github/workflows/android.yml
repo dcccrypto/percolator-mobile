@@ -10,7 +10,7 @@ on:
 jobs:
   test:
     name: Test
-    runs-on: blacksmith-2vcpu-ubuntu-22.04
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
 
@@ -28,7 +28,7 @@ jobs:
 
   build-debug:
     name: Build Debug APK
-    runs-on: blacksmith-2vcpu-ubuntu-22.04
+    runs-on: ubuntu-22.04
     needs: test
     if: github.event_name == 'pull_request'
     steps:
@@ -71,7 +71,7 @@ jobs:
 
   build-release:
     name: Build Release APK
-    runs-on: blacksmith-2vcpu-ubuntu-22.04
+    runs-on: ubuntu-22.04
     needs: test
     if: github.event_name == 'push'
     permissions:

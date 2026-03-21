@@ -4,6 +4,10 @@ import { api, type MarketData } from '../lib/api';
 // SecureStore has 2048-byte limit which markets data easily exceeds.
 let _marketsCache: Market[] | null = null;
 
+/**
+ * Consumer-facing market shape used throughout the mobile app.
+ * Derived from MarketData (api.ts) via mapMarket().
+ */
 export interface Market {
   slabAddress: string;
   mintAddress: string;

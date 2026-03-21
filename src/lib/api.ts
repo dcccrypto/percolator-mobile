@@ -93,6 +93,7 @@ function normalizeMarket(m: RawMarketData): MarketData {
   };
 }
 
+/** Raw price snapshot returned by /api/prices/markets. */
 interface PriceData {
   slab_address: string;
   last_price: number;
@@ -101,6 +102,7 @@ interface PriceData {
   updated_at: string;
 }
 
+/** Individual trade event returned by /api/markets/:slab/trades. */
 interface TradeData {
   id: string;
   slab_address: string;
@@ -110,6 +112,7 @@ interface TradeData {
   timestamp: string;
 }
 
+/** A trader's open position on a Percolator market. */
 export interface Position {
   id: string;
   market: string;
@@ -123,6 +126,7 @@ export interface Position {
   pnlPercent: number;
 }
 
+/** Single row from the trader leaderboard. */
 export interface LeaderboardEntry {
   rank: number;
   wallet: string;
@@ -131,6 +135,7 @@ export interface LeaderboardEntry {
   pnl: number;
 }
 
+/** Aggregate trading stats for a single wallet. */
 export interface TraderStats {
   totalTrades: number;
   winRate: number;
@@ -139,6 +144,7 @@ export interface TraderStats {
   avgLeverage: number;
 }
 
+/** A single completed trade for a wallet from /api/trader/:wallet/trades. */
 export interface TraderTrade {
   id: string;
   market: string;
@@ -150,6 +156,7 @@ export interface TraderTrade {
   signature?: string;
 }
 
+/** Insurance fund snapshot and historical balance series for a market. */
 export interface InsuranceData {
   currentBalance: number;
   feeRevenue: number;
@@ -157,6 +164,7 @@ export interface InsuranceData {
   history: { timestamp: string; balance: number }[];
 }
 
+/** Platform-wide aggregate statistics from /api/stats. */
 export interface PlatformStats {
   totalMarkets: number;
   volume24h: number;
@@ -165,6 +173,7 @@ export interface PlatformStats {
   trades24h: number;
 }
 
+/** A single liquidity stake pool for a Percolator market. */
 export interface StakePool {
   id: string;
   name: string;
@@ -176,6 +185,10 @@ export interface StakePool {
   cooldownSeconds: number;
 }
 
+/**
+ * Thin fetch wrapper — parses JSON and throws descriptive errors on HTTP failures.
+ * Translates 429 responses to a user-friendly rate-limit message.
+ */
 async function fetchJSON<T>(url: string): Promise<T> {
   const res = await fetch(url);
   if (!res.ok) {

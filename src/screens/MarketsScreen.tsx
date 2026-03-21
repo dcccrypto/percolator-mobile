@@ -25,6 +25,7 @@ import { CreateMarketFAB } from '../components/trade/CreateMarketFAB';
 
 const FILTERS = ['Hot 🔥', 'Newest', 'Volume ↓', 'OI ↓', 'Top Gainers'];
 
+/** Format a USD price for display; returns '$—.—' when null. */
 function formatPrice(price: number | null): string {
   if (price == null) return '$—.—';
   if (price >= 1000) return `$${price.toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
@@ -32,6 +33,7 @@ function formatPrice(price: number | null): string {
   return `$${price.toPrecision(4)}`;
 }
 
+/** Format a USD volume/OI value with K/M suffixes; returns '—' when null. */
 function formatVolume(oi: number | null): string {
   if (oi == null) return '—';
   if (oi >= 1_000_000) return `$${(oi / 1_000_000).toFixed(1)}M`;

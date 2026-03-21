@@ -17,7 +17,7 @@ import { fonts } from '../theme/fonts';
 import { Panel } from '../components/ui/Panel';
 import { InputField } from '../components/ui/InputField';
 import { TradeButton } from '../components/ui/TradeButton';
-import { FilterPill } from '../components/ui/FilterPill';
+import { LeverageSlider, LeverageTick } from '../components/ui/LeverageSlider';
 import { ErrorBanner } from '../components/ui/ErrorBanner';
 import { MiniChart } from '../components/chart/MiniChart';
 import { SuccessToast } from '../components/trade/SuccessToast';
@@ -36,7 +36,13 @@ type TradeRouteParams = {
   Trade: { direction?: 'long' | 'short' } | undefined;
 };
 
-const LEVERAGE_OPTIONS = ['1x', '2x', '5x', '10x', '20x'];
+/** Parse a legacy string leverage value like "5x" or "10x" to a number */
+function parseLeverageSetting(raw: string | number | undefined): LeverageTick {
+  if (typeof raw === 'number') return raw as LeverageTick;
+  if (!raw) return 5;
+  const n = parseInt(String(raw), 10);
+  return ([1, 2, 5, 10, 20].includes(n) ? n : 5) as LeverageTick;
+}
 
 export function TradeScreen() {
   const route = useRoute<RouteProp<TradeRouteParams, 'Trade'>>();
@@ -63,8 +69,10 @@ export function TradeScreen() {
   const navDirection = route.params?.direction;
   const [direction, setDirection] = useState<'long' | 'short'>(navDirection ?? 'long');
   const [size, setSize] = useState('');
-  // Use settings default leverage; fall back to '5x'
-  const [leverage, setLeverage] = useState(settings.defaultLeverage || '5x');
+  // Use settings default leverage (numeric); fall back to 5×
+  const [leverage, setLeverage] = useState<LeverageTick>(() =>
+    parseLeverageSetting(settings.defaultLeverage),
+  );
 
   // Sync direction if navigated with a direction param
   useEffect(() => {
@@ -116,7 +124,7 @@ export function TradeScreen() {
 
   const orderSummary = useMemo(() => {
     const sizeNum = parseFloat(size) || 0;
-    const levNum = parseInt(leverage) || 5;
+    const levNum = leverage;
     // sizeUsd = position notional in USD
     const sizeUsd = sizeNum * price;
     const margin = sizeUsd / levNum;
@@ -150,7 +158,7 @@ export function TradeScreen() {
       [
         `Market: ${symbol}`,
         `Size: ${orderSummary.sizeUsd.toFixed(2)} USD`,
-        `Leverage: ${leverage}`,
+        `Leverage: ${leverage}×`,
         `Entry ~$${price.toFixed(2)}`,
         `Liq ~$${orderSummary.liqPrice.toFixed(2)}`,
         `Fee ~$${orderSummary.fee.toFixed(4)}`,
@@ -402,7 +410,7 @@ export function TradeScreen() {
               if (walletBalance != null && walletBalance > 0 && price > 0) {
                 // Reserve 0.01 SOL for tx fees, convert balance to token units
                 const usable = Math.max(walletBalance - 0.01, 0);
-                const levNum = parseInt(leverage) || 5;
+                const levNum = leverage;
                 // Max token size = (usable SOL value in USD equivalent) * leverage / price
                 // For simplicity: if trading SOL perp, usable is the token amount directly
                 setSize(usable.toFixed(4));
@@ -413,19 +421,17 @@ export function TradeScreen() {
           }}
         />
 
-        {/* Leverage */}
+        {/* Leverage — §4.4 continuous slider */}
         <View style={styles.leverageSection}>
-          <Text style={styles.label}>Leverage</Text>
-          <View style={styles.leveragePills}>
-            {LEVERAGE_OPTIONS.map((lev) => (
-              <FilterPill
-                key={lev}
-                label={lev}
-                active={leverage === lev}
-                onPress={() => setLeverage(lev)}
-              />
-            ))}
+          <View style={styles.leverageHeader}>
+            <Text style={styles.label}>Leverage</Text>
+            <Text style={styles.leverageValue}>{leverage}×</Text>
           </View>
+          <LeverageSlider
+            value={leverage}
+            onChange={setLeverage}
+            testID="leverage-slider"
+          />
         </View>
 
         {/* Order Summary */}
@@ -709,15 +715,21 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
   leverageSection: { gap: 8 },
+  leverageHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  leverageValue: {
+    fontFamily: fonts.mono,
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.accent,
+  },
   label: {
     fontFamily: fonts.body,
     fontSize: 14,
     color: colors.textSecondary,
-  },
-  leveragePills: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
   },
   summaryPanel: {
     backgroundColor: colors.bgInset,

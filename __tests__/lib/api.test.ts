@@ -17,29 +17,117 @@ describe('api', () => {
   // getMarkets
   // ---------------------------------------------------------------------------
   describe('getMarkets', () => {
-    it('fetches markets and returns the markets array', async () => {
-      const mockMarkets = [
-        {
-          slabAddress: 'slab1',
-          symbol: 'SOL-PERP',
-          name: 'Solana Perpetual',
-          lastPrice: 145.5,
-          markPrice: 145.6,
-          maxLeverage: 20,
-          tradingFeeBps: 5,
-          status: 'active',
-        },
-      ];
+    it('normalises snake_case API response to camelCase MarketData', async () => {
+      // API returns snake_case — this is the real response shape
+      const rawMarket = {
+        slab_address: 'slab1',
+        mint_address: 'mint1',
+        symbol: 'SOL-PERP',
+        name: 'Solana Perpetual',
+        decimals: 9,
+        max_leverage: 20,
+        trading_fee_bps: 5,
+        logo_url: null,
+        total_open_interest: 100000,
+        total_accounts: 42,
+        last_price: 145.5,
+        mark_price: 145.6,
+        index_price: 145.4,
+        funding_rate: 0.001,
+        volume_24h: 500000,
+        volume_24h_usd: 1200000,
+        is_zombie: false,
+      };
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: () => Promise.resolve({ markets: mockMarkets }),
+        json: () => Promise.resolve({ markets: [rawMarket] }),
       });
 
       const result = await api.getMarkets();
-      expect(result).toEqual(mockMarkets);
+      expect(result).toHaveLength(1);
+      const m = result[0];
+
+      // All fields should be camelCase
+      expect(m.slabAddress).toBe('slab1');
+      expect(m.mintAddress).toBe('mint1');
+      expect(m.symbol).toBe('SOL-PERP');
+      expect(m.name).toBe('Solana Perpetual');
+      expect(m.decimals).toBe(9);
+      expect(m.maxLeverage).toBe(20);
+      expect(m.tradingFeeBps).toBe(5);
+      expect(m.logoUrl).toBeNull();
+      expect(m.totalOpenInterest).toBe(100000);
+      expect(m.totalAccounts).toBe(42);
+      expect(m.lastPrice).toBe(145.5);
+      expect(m.markPrice).toBe(145.6);
+      expect(m.indexPrice).toBe(145.4);
+      expect(m.fundingRate).toBe(0.001);
+      expect(m.volume24h).toBe(1200000); // prefers volume_24h_usd
+      expect(m.status).toBe('active');
+      expect(m.isZombie).toBe(false);
+
       expect(mockFetch).toHaveBeenCalledWith(
         expect.stringContaining('/markets'),
       );
+    });
+
+    it('derives status=zombie and isZombie=true from is_zombie:true', async () => {
+      const rawMarket = {
+        slab_address: 'slab2',
+        mint_address: 'mint2',
+        symbol: 'DEAD-PERP',
+        name: 'Dead Market',
+        decimals: 6,
+        max_leverage: 5,
+        trading_fee_bps: 10,
+        logo_url: null,
+        total_open_interest: 0,
+        total_accounts: 0,
+        last_price: null,
+        mark_price: null,
+        index_price: null,
+        funding_rate: null,
+        volume_24h: 0,
+        volume_24h_usd: null,
+        is_zombie: true,
+      };
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ markets: [rawMarket] }),
+      });
+
+      const result = await api.getMarkets();
+      expect(result[0].status).toBe('zombie');
+      expect(result[0].isZombie).toBe(true);
+    });
+
+    it('falls back to volume_24h when volume_24h_usd is null', async () => {
+      const rawMarket = {
+        slab_address: 'slab3',
+        mint_address: 'mint3',
+        symbol: 'TKN-PERP',
+        name: 'Token',
+        decimals: 6,
+        max_leverage: 10,
+        trading_fee_bps: 10,
+        logo_url: null,
+        total_open_interest: 0,
+        total_accounts: 1,
+        last_price: 1.0,
+        mark_price: 1.0,
+        index_price: 1.0,
+        funding_rate: 0,
+        volume_24h: 250000,
+        volume_24h_usd: null,
+        is_zombie: false,
+      };
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ markets: [rawMarket] }),
+      });
+
+      const result = await api.getMarkets();
+      expect(result[0].volume24h).toBe(250000);
     });
 
     it('throws on non-OK response', async () => {
@@ -57,15 +145,34 @@ describe('api', () => {
   // getMarket
   // ---------------------------------------------------------------------------
   describe('getMarket', () => {
-    it('fetches a single market by slab address', async () => {
-      const mockMarket = { slabAddress: 'slab1', symbol: 'SOL-PERP' };
+    it('normalises a single market from snake_case to camelCase', async () => {
+      const rawMarket = {
+        slab_address: 'slab1',
+        mint_address: 'mint1',
+        symbol: 'SOL-PERP',
+        name: 'Solana Perpetual',
+        decimals: 9,
+        max_leverage: 20,
+        trading_fee_bps: 5,
+        logo_url: null,
+        total_open_interest: null,
+        total_accounts: null,
+        last_price: 100.0,
+        mark_price: 100.1,
+        index_price: 99.9,
+        funding_rate: 0,
+        volume_24h: 0,
+        volume_24h_usd: null,
+        is_zombie: false,
+      };
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: () => Promise.resolve({ market: mockMarket }),
+        json: () => Promise.resolve({ market: rawMarket }),
       });
 
       const result = await api.getMarket('slab1');
-      expect(result).toEqual(mockMarket);
+      expect(result.slabAddress).toBe('slab1');
+      expect(result.symbol).toBe('SOL-PERP');
       expect(mockFetch).toHaveBeenCalledWith(
         expect.stringContaining('/markets/slab1'),
       );

@@ -1,10 +1,14 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { api } from '../lib/api';
+import { api, type MarketData } from '../lib/api';
 // Module-level cache — survives within app session, no size limit (#67)
 // SecureStore has 2048-byte limit which markets data easily exceeds.
 let _marketsCache: Market[] | null = null;
 
-interface Market {
+/**
+ * Consumer-facing market shape used throughout the mobile app.
+ * Derived from MarketData (api.ts) via mapMarket().
+ */
+export interface Market {
   slabAddress: string;
   mintAddress: string;
   symbol: string;
@@ -15,13 +19,23 @@ interface Market {
   totalOpenInterest: number | null;
   maxLeverage: number;
   tradingFeeBps: number;
+  /** 'active' | 'zombie' — derived from is_zombie */
   status: string;
+  /** Always 0 — API does not return 24h change; computed field reserved for future */
   change24h: number;
   logoUrl: string | null;
   decimals: number;
+  /** 24h volume in USD (volume_24h_usd when available, else raw volume_24h) */
+  volume24h: number | null;
+  isZombie: boolean;
 }
 
-function mapMarket(m: any): Market {
+/**
+ * Map a normalised MarketData (camelCase, from api.getMarkets()) to the
+ * local Market shape. api.ts now handles the snake_case → camelCase conversion,
+ * so all fields are already correctly named here.
+ */
+function mapMarket(m: MarketData): Market {
   return {
     slabAddress: m.slabAddress,
     mintAddress: m.mintAddress ?? '',
@@ -34,14 +48,16 @@ function mapMarket(m: any): Market {
     maxLeverage: m.maxLeverage,
     tradingFeeBps: m.tradingFeeBps,
     status: m.status,
-    change24h: 0,
+    change24h: 0, // API does not return a 24h change percentage
     logoUrl: m.logoUrl ?? null,
     decimals: m.decimals ?? 6,
+    volume24h: m.volume24h ?? null,
+    isZombie: m.isZombie ?? false,
   };
 }
 
 /**
- * Markets hook with AsyncStorage caching (PERC-505).
+ * Markets hook with module-level caching (PERC-505).
  * Shows cached data instantly on startup, then refreshes from API.
  */
 export function useMarkets() {

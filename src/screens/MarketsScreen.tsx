@@ -25,6 +25,7 @@ import { CreateMarketFAB } from '../components/trade/CreateMarketFAB';
 
 const FILTERS = ['Hot 🔥', 'Newest', 'Volume ↓', 'OI ↓', 'Top Gainers'];
 
+/** Format a USD price for display; returns '$—.—' when null. */
 function formatPrice(price: number | null): string {
   if (price == null) return '$—.—';
   if (price >= 1000) return `$${price.toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
@@ -32,6 +33,7 @@ function formatPrice(price: number | null): string {
   return `$${price.toPrecision(4)}`;
 }
 
+/** Format a USD volume/OI value with K/M suffixes; returns '—' when null. */
 function formatVolume(oi: number | null): string {
   if (oi == null) return '—';
   if (oi >= 1_000_000) return `$${(oi / 1_000_000).toFixed(1)}M`;
@@ -168,7 +170,7 @@ const MarketCard = memo(function MarketCard({
     colors.short;
 
   // Hot indicator: OI > 80% capacity OR 24h vol > $1M
-  const vol24h = market.volume24h ?? (market.totalOpenInterest ?? 0) * 0.3; // proxy if unavailable
+  const vol24h = market.volume24h ?? 0;
   const isHot = oiPct >= HOT_OI_PCT || vol24h >= HOT_VOL_USD;
 
   const baseName = market.name ?? market.symbol.replace(/-PERP$/i, '') + ' Perp';
@@ -276,11 +278,11 @@ export function MarketsScreen() {
     // Sort based on active filter
     switch (activeFilter) {
       case 'Hot 🔥':
-        // Hot = highest 24h volume (OI × change combo proxy)
+        // Hot = highest 24h USD volume; fall back to OI as proxy
         result.sort(
           (a, b) =>
-            (b.totalOpenInterest ?? 0) * Math.abs(b.change24h) -
-            (a.totalOpenInterest ?? 0) * Math.abs(a.change24h),
+            (b.volume24h ?? b.totalOpenInterest ?? 0) -
+            (a.volume24h ?? a.totalOpenInterest ?? 0),
         );
         break;
       case 'Newest':
@@ -288,7 +290,7 @@ export function MarketsScreen() {
         result.reverse();
         break;
       case 'Volume ↓':
-        result.sort((a, b) => (b.totalOpenInterest ?? 0) - (a.totalOpenInterest ?? 0));
+        result.sort((a, b) => (b.volume24h ?? b.totalOpenInterest ?? 0) - (a.volume24h ?? a.totalOpenInterest ?? 0));
         break;
       case 'OI ↓':
         result.sort((a, b) => (b.totalOpenInterest ?? 0) - (a.totalOpenInterest ?? 0));

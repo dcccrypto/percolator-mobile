@@ -168,7 +168,7 @@ const MarketCard = memo(function MarketCard({
     colors.short;
 
   // Hot indicator: OI > 80% capacity OR 24h vol > $1M
-  const vol24h = market.volume24h ?? (market.totalOpenInterest ?? 0) * 0.3; // proxy if unavailable
+  const vol24h = market.volume24h ?? 0;
   const isHot = oiPct >= HOT_OI_PCT || vol24h >= HOT_VOL_USD;
 
   const baseName = market.name ?? market.symbol.replace(/-PERP$/i, '') + ' Perp';
@@ -276,11 +276,11 @@ export function MarketsScreen() {
     // Sort based on active filter
     switch (activeFilter) {
       case 'Hot 🔥':
-        // Hot = highest 24h volume (OI × change combo proxy)
+        // Hot = highest 24h USD volume; fall back to OI as proxy
         result.sort(
           (a, b) =>
-            (b.totalOpenInterest ?? 0) * Math.abs(b.change24h) -
-            (a.totalOpenInterest ?? 0) * Math.abs(a.change24h),
+            (b.volume24h ?? b.totalOpenInterest ?? 0) -
+            (a.volume24h ?? a.totalOpenInterest ?? 0),
         );
         break;
       case 'Newest':
@@ -288,7 +288,7 @@ export function MarketsScreen() {
         result.reverse();
         break;
       case 'Volume ↓':
-        result.sort((a, b) => (b.totalOpenInterest ?? 0) - (a.totalOpenInterest ?? 0));
+        result.sort((a, b) => (b.volume24h ?? b.totalOpenInterest ?? 0) - (a.volume24h ?? a.totalOpenInterest ?? 0));
         break;
       case 'OI ↓':
         result.sort((a, b) => (b.totalOpenInterest ?? 0) - (a.totalOpenInterest ?? 0));

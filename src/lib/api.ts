@@ -11,7 +11,18 @@
 const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'https://percolatorlaunch.com/api';
 const WEB_API_BASE = process.env.EXPO_PUBLIC_WEB_URL ?? 'https://percolatorlaunch.com/api';
 
-interface MarketData {
+/**
+ * MarketData — camelCase consumer-facing interface.
+ *
+ * The /api/markets endpoint returns snake_case fields (slab_address, logo_url, etc.)
+ * which are normalised to camelCase inside normalizeMarket() before being returned
+ * from api.getMarkets() / api.getMarket().
+ *
+ * Fields not present in the API response:
+ *  - status: derived from is_zombie (false → 'active', true → 'zombie')
+ *  - volume24h: mapped from volume_24h_usd (preferred) or volume_24h (raw atom fallback)
+ */
+export interface MarketData {
   slabAddress: string;
   mintAddress: string;
   symbol: string;
@@ -19,6 +30,7 @@ interface MarketData {
   decimals: number;
   maxLeverage: number;
   tradingFeeBps: number;
+  /** 'active' | 'zombie' — derived from is_zombie field */
   status: string;
   logoUrl: string | null;
   totalOpenInterest: number | null;
@@ -27,6 +39,58 @@ interface MarketData {
   markPrice: number | null;
   indexPrice: number | null;
   fundingRate: number | null;
+  /** 24h volume in USD (volume_24h_usd when available, else raw volume_24h atom) */
+  volume24h: number | null;
+  isZombie: boolean;
+}
+
+/**
+ * Raw snake_case response from /api/markets endpoint.
+ * Only the fields we actually read are declared; the rest are ignored.
+ */
+interface RawMarketData {
+  slab_address: string;
+  mint_address: string;
+  symbol: string;
+  name: string;
+  decimals: number;
+  max_leverage: number;
+  trading_fee_bps: number;
+  logo_url: string | null;
+  total_open_interest: number | null;
+  total_accounts: number | null;
+  last_price: number | null;
+  mark_price: number | null;
+  index_price: number | null;
+  funding_rate: number | null;
+  volume_24h: number | null;
+  volume_24h_usd: number | null;
+  is_zombie: boolean;
+}
+
+/**
+ * Normalise a single raw API market (snake_case) to the camelCase MarketData shape.
+ */
+function normalizeMarket(m: RawMarketData): MarketData {
+  return {
+    slabAddress: m.slab_address,
+    mintAddress: m.mint_address ?? '',
+    symbol: m.symbol,
+    name: m.name,
+    decimals: m.decimals ?? 6,
+    maxLeverage: m.max_leverage,
+    tradingFeeBps: m.trading_fee_bps,
+    status: m.is_zombie ? 'zombie' : 'active',
+    logoUrl: m.logo_url ?? null,
+    totalOpenInterest: m.total_open_interest ?? null,
+    totalAccounts: m.total_accounts ?? null,
+    lastPrice: m.last_price ?? null,
+    markPrice: m.mark_price ?? null,
+    indexPrice: m.index_price ?? null,
+    fundingRate: m.funding_rate ?? null,
+    volume24h: m.volume_24h_usd ?? m.volume_24h ?? null,
+    isZombie: m.is_zombie ?? false,
+  };
 }
 
 interface PriceData {
@@ -125,18 +189,18 @@ async function fetchJSON<T>(url: string): Promise<T> {
 }
 
 export const api = {
-  // ── Hono API (api.percolatorlaunch.com) ──
+  // ── Next.js API (percolatorlaunch.com/api) ──
 
-  /** List all markets with stats */
+  /** List all markets with stats — normalises snake_case → camelCase */
   async getMarkets(): Promise<MarketData[]> {
-    const data = await fetchJSON<{ markets: MarketData[] }>(`${API_BASE}/markets`);
-    return data.markets;
+    const data = await fetchJSON<{ markets: RawMarketData[] }>(`${API_BASE}/markets`);
+    return (data.markets ?? []).map(normalizeMarket);
   },
 
-  /** Get single market by slab address */
+  /** Get single market by slab address — normalises snake_case → camelCase */
   async getMarket(slab: string): Promise<MarketData> {
-    const data = await fetchJSON<{ market: MarketData }>(`${API_BASE}/markets/${slab}`);
-    return data.market;
+    const data = await fetchJSON<{ market: RawMarketData }>(`${API_BASE}/markets/${slab}`);
+    return normalizeMarket(data.market);
   },
 
   /** Get latest prices for all markets */

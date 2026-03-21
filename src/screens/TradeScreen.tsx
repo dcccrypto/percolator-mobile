@@ -508,7 +508,9 @@ export function TradeScreen() {
           label={
             submitting
               ? 'Signing…'
-              : `OPEN ${direction.toUpperCase()} POSITION`
+              : direction === 'long'
+              ? 'OPEN LONG ▲'
+              : 'OPEN SHORT ▼'
           }
           direction={direction}
           fullWidth

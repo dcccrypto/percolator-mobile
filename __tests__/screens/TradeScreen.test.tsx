@@ -73,9 +73,14 @@ describe('TradeScreen', () => {
     expect(getAllByText(/Short/i).length).toBeGreaterThanOrEqual(1);
   });
 
-  it('shows leverage options', () => {
-    const { getByText } = render(<TradeScreen />);
-    expect(getByText('5x')).toBeTruthy();
+  it('shows leverage slider with tick labels', () => {
+    const { getAllByText, getByTestId } = render(<TradeScreen />);
+    // Slider component rendered
+    expect(getByTestId('leverage-slider')).toBeTruthy();
+    // Tick labels visible (§4.4) — 1× and 20× appear once; 5× appears twice (header + tick)
+    expect(getAllByText('1×').length).toBeGreaterThanOrEqual(1);
+    expect(getAllByText('5×').length).toBeGreaterThanOrEqual(1);
+    expect(getAllByText('20×').length).toBeGreaterThanOrEqual(1);
   });
 
   it('shows "Connect Wallet" prompt when not connected', () => {

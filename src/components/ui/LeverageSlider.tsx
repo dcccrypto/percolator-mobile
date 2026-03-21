@@ -17,6 +17,8 @@ import {
   PanResponder,
   StyleSheet,
   LayoutChangeEvent,
+  GestureResponderEvent,
+  PanResponderGestureState,
 } from 'react-native';
 import { colors, radii } from '../../theme/tokens';
 import { fonts } from '../../theme/fonts';
@@ -80,10 +82,16 @@ export function LeverageSlider({ value, onChange, testID }: Props) {
 
   const panResponder = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
+      // Only claim gesture on explicit horizontal swipe or a tap directly on the slider,
+      // so vertical ScrollView scrolls are NOT accidentally intercepted.
+      onStartShouldSetPanResponder: (_evt: GestureResponderEvent, gs: PanResponderGestureState) =>
+        // Claim only if the touch started with minimal Y movement (i.e. a tap or horizontal drag)
+        Math.abs(gs.dy) < 5,
+      onMoveShouldSetPanResponder: (_evt: GestureResponderEvent, gs: PanResponderGestureState) =>
+        // Claim horizontal move only when dx dominates — prevents scroll theft
+        Math.abs(gs.dx) > Math.abs(gs.dy) * 1.5,
 
-      onPanResponderGrant: (evt) => {
+      onPanResponderGrant: (evt: GestureResponderEvent) => {
         const x = evt.nativeEvent.locationX;
         const f = Math.max(0, Math.min(1, x / (liveWidth.current || 1)));
         const raw = fractionToValue(f);
@@ -92,7 +100,7 @@ export function LeverageSlider({ value, onChange, testID }: Props) {
         onChange(snapToTick(raw));
       },
 
-      onPanResponderMove: (evt) => {
+      onPanResponderMove: (evt: GestureResponderEvent) => {
         const x = evt.nativeEvent.locationX;
         const f = Math.max(0, Math.min(1, x / (liveWidth.current || 1)));
         const raw = fractionToValue(f);
@@ -138,7 +146,14 @@ export function LeverageSlider({ value, onChange, testID }: Props) {
   return (
     <View testID={testID} style={styles.container}>
       {/* Slider row — track + thumb */}
-      <View style={styles.hitArea} onLayout={onLayout} {...panResponder.panHandlers}>
+      <View
+        style={styles.hitArea}
+        onLayout={onLayout}
+        accessibilityRole="adjustable"
+        accessibilityLabel="Leverage slider"
+        accessibilityValue={{ min: MIN, max: MAX, now: value }}
+        {...panResponder.panHandlers}
+      >
         {/* Track */}
         <View style={styles.track} pointerEvents="none">
           <Animated.View style={[styles.fill, { width: fillWidth }]} />

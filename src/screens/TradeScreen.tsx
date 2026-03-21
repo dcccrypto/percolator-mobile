@@ -79,9 +79,15 @@ export function TradeScreen() {
     if (navDirection) setDirection(navDirection);
   }, [navDirection]);
 
-  // Load settings on mount
+  // Load settings on mount; once loaded, sync leverage from persisted default
   useEffect(() => {
-    if (!settings.loaded) settings.load();
+    if (!settings.loaded) {
+      settings.load();
+    } else {
+      // Settings just became ready — update leverage to match persisted default
+      setLeverage(parseLeverageSetting(settings.defaultLeverage));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings.loaded]);
 
   // Use live streamed price → API market price → last price history point → 0

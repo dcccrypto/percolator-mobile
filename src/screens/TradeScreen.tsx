@@ -448,6 +448,11 @@ export function TradeScreen() {
             value={priceReady ? `$${orderSummary.entry.toFixed(2)}` : '…'}
           />
           <SummaryRow
+            label="Entry (max)"
+            value={priceReady ? `$${orderSummary.entryWithSlippage.toFixed(2)}` : '…'}
+            valueColor={colors.textSecondary}
+          />
+          <SummaryRow
             label="Notional"
             value={
               orderSummary.sizeUsd > 0

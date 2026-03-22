@@ -91,6 +91,27 @@ function concat(...arrays: Uint8Array[]): Uint8Array {
 
 // ── Security validation ───────────────────────────────────────────────────────
 
+/**
+ * Known trusted Percolator program IDs (devnet + mainnet-beta).
+ * Slab account owner is validated against this set for defense-in-depth,
+ * consistent with useInsuranceLP.assertTrustedProgram() pattern.
+ */
+const TRUSTED_PROGRAM_IDS: ReadonlySet<string> = new Set([
+  'GM8zjJ8LTBMv9xEsverh6H6wLyevgMHEJXcEzyY3rY24', // devnet v0
+  'PCKRHBmNXjTLV7RCM8JCBiJGveKptb6NKZcV7Xhf5wW',  // mainnet-beta (reserved)
+]);
+
+/**
+ * Validate that the slab account owner belongs to the known Percolator program
+ * set. Provides defense-in-depth against spoofed slab accounts, consistent
+ * with the assertTrustedProgram() pattern in useInsuranceLP.
+ */
+function assertTrustedProgram(programId: PublicKey, label: string): void {
+  if (!TRUSTED_PROGRAM_IDS.has(programId.toBase58())) {
+    throw new Error(`Untrusted program for ${label}: ${programId.toBase58()}`);
+  }
+}
+
 function assertSafeAmount(amount: bigint, label: string): void {
   if (amount <= BigInt(0)) {
     throw new Error(`${label} must be > 0`);
@@ -333,9 +354,10 @@ export function useStake(): UseStakeResult {
         // Validate amount before any network calls
         assertSafeAmount(params.amountBaseUnits, 'Stake deposit amount');
 
-        // Validate slab exists on-chain
+        // Validate slab exists on-chain and owner is a trusted Percolator program
         const slabInfo = await connection.getAccountInfo(slabPk);
         if (!slabInfo) throw new Error('Market not found on-chain');
+        assertTrustedProgram(slabInfo.owner, 'Stake slab');
 
         // Fetch pool accounts + derive PDAs
         const { pool, lpMint, vault, vaultAuth, depositPda } =
@@ -379,6 +401,9 @@ export function useStake(): UseStakeResult {
         const serialized = tx.serialize({ requireAllSignatures: false, verifySignatures: false });
         const results = await signAndSend([new Uint8Array(serialized)]);
         const signature = results.signatures[0];
+        if (!signature) {
+          throw new Error('Wallet did not return a transaction signature');
+        }
 
         // Wait for on-chain finality before reporting success
         const confirmation = await connection.confirmTransaction(
@@ -422,9 +447,10 @@ export function useStake(): UseStakeResult {
         // Validate LP amount before any network calls
         assertSafeAmount(params.lpAmountBaseUnits, 'Stake withdraw amount');
 
-        // Validate slab exists on-chain
+        // Validate slab exists on-chain and owner is a trusted Percolator program
         const slabInfo = await connection.getAccountInfo(slabPk);
         if (!slabInfo) throw new Error('Market not found on-chain');
+        assertTrustedProgram(slabInfo.owner, 'Stake slab');
 
         // Fetch pool accounts + derive PDAs
         const { pool, lpMint, vault, vaultAuth, depositPda } =
@@ -471,6 +497,9 @@ export function useStake(): UseStakeResult {
         const serialized = tx.serialize({ requireAllSignatures: false, verifySignatures: false });
         const results = await signAndSend([new Uint8Array(serialized)]);
         const signature = results.signatures[0];
+        if (!signature) {
+          throw new Error('Wallet did not return a transaction signature');
+        }
 
         // Wait for on-chain finality before reporting success
         const confirmation = await connection.confirmTransaction(

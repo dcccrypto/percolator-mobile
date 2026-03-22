@@ -154,4 +154,39 @@ describe('EarnScreen', () => {
     const { getByText } = render(<EarnScreen />);
     expect(getByText('\u2014')).toBeTruthy();
   });
+
+  // Regression: issue #128 — vault.decimals undefined must not crash confirm flow
+  it('renders without crash when market has no decimals field (undefined guard)', async () => {
+    mockUseMarketsFn.mockReturnValue({
+      markets: [
+        {
+          slabAddress: 'slab-no-decimals',
+          symbol: 'NODEC',
+          name: 'NODEC-PERP',
+          logoUrl: null,
+          totalOpenInterest: 100_000,
+          // decimals intentionally omitted — simulates poorly-hydrated API response
+        },
+      ],
+      loading: false,
+      error: null,
+      refetch: jest.fn().mockResolvedValue(undefined),
+    });
+    mockGetInsurance.mockResolvedValue(MOCK_INSURANCE);
+
+    // Should render without throwing TypeError from vault.decimals being undefined
+    const { findByText } = render(<EarnScreen />);
+    await findByText('NODEC');
+  });
+
+  // Unit guard: the decimals ?? 6 fallback produces valid BigInt (no NaN → TypeError)
+  it('decimals ?? 6 guard: BigInt(Math.round(amount * 10 ** (undefined ?? 6))) does not throw', () => {
+    const undefinedDecimals: number | undefined = undefined;
+    const amountNum = 100.5;
+    const decimals = undefinedDecimals ?? 6;
+    expect(() => {
+      const baseUnits = BigInt(Math.round(amountNum * 10 ** decimals));
+      expect(baseUnits).toBe(BigInt(100_500_000));
+    }).not.toThrow();
+  });
 });

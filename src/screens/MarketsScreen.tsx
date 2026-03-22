@@ -223,10 +223,14 @@ const MarketCard = memo(function MarketCard({
           <Text style={styles.statValue}>{formatVolume(market.totalOpenInterest)}</Text>
         </View>
         <View style={styles.oiBarCell}>
+          {/* OI Utilization label row — design brief §4 (mobile-oi-bar-and-onboarding-icons-spec) */}
+          <View style={styles.oiLabelRow}>
+            <Text style={styles.oiLabel}>OI Utilization</Text>
+            <Text style={styles.oiPctText}>{Math.round(oiPct * 100)}%</Text>
+          </View>
           <View style={styles.oiBar}>
             <View style={[styles.oiFill, { width: `${oiPct * 100}%` as any, backgroundColor: oiFillColor }]} />
           </View>
-          <Text style={styles.oiPctText}>{Math.round(oiPct * 100)}%</Text>
         </View>
       </View>
 
@@ -525,9 +529,17 @@ const styles = StyleSheet.create({
   statLabel: { fontFamily: fonts.body, fontSize: 11, color: colors.textSecondary },
   statValue: { fontFamily: fonts.mono, fontSize: 11, color: colors.text, fontVariant: ['tabular-nums'] },
   oiBarCell: { flex: 1, gap: 4 },
+  oiLabelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  oiLabel: {
+    fontFamily: fonts.body,
+    fontSize: 10,
+    color: colors.textMuted,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
   oiBar: { height: 4, borderRadius: 2, backgroundColor: colors.bgOverlay, overflow: 'hidden' },
   oiFill: { height: '100%', borderRadius: 2 },
-  oiPctText: { fontFamily: fonts.body, fontSize: 10, color: colors.textSecondary, textAlign: 'right' },
+  oiPctText: { fontFamily: fonts.body, fontSize: 10, color: colors.textSecondary, fontVariant: ['tabular-nums'] },
 
   // Long / Short buttons
   tradeRow: { flexDirection: 'row', gap: 8 },

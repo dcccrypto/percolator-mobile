@@ -4,13 +4,17 @@
  * Covers:
  *   - stakeDeposit: wallet not connected → null + error
  *   - stakeDeposit: slab not found → null + error
+ *   - stakeDeposit: slab owner untrusted → null + error (assertTrustedProgram)
  *   - stakeDeposit: pool not initialised → null + error
  *   - stakeDeposit: pool owner mismatch → null + error
  *   - stakeDeposit: amount validation (zero, over MAX) → null + error
  *   - stakeDeposit: happy path — creates ATAs when missing, sends via MWA
  *   - stakeDeposit: happy path — skips ATA creation when accounts exist
+ *   - stakeDeposit: MWA returns empty signatures → null + error (defensive guard)
  *   - stakeWithdraw: wallet not connected → null + error
+ *   - stakeWithdraw: slab owner untrusted → null + error (assertTrustedProgram)
  *   - stakeWithdraw: LP ATA missing → null + error (deposit first)
+ *   - stakeWithdraw: MWA returns empty signatures → null + error (defensive guard)
  *   - stakeWithdraw: happy path — sends via MWA, returns signature
  */
 
@@ -44,6 +48,8 @@ jest.mock('../../src/lib/solana', () => ({
 // ── Constants ───────────────────────────────────────────────────────────────
 const STAKE_PROGRAM_ID = new PublicKey('6aJb1F9CDCVWCNYFwj8aQsVb696YnW6J1FznteHq4Q6k');
 const TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
+/** One of the TRUSTED_PROGRAM_IDS in useStake — used as slab owner in happy-path tests. */
+const TRUSTED_SLAB_OWNER = new PublicKey('GM8zjJ8LTBMv9xEsverh6H6wLyevgMHEJXcEzyY3rY24');
 
 const SLAB_PK         = new PublicKey('7MkErbg12MdHkzZzL6GzvQ6fQgZbxnT25zxKxbdrRDvr');
 const COLLATERAL_MINT = new PublicKey('469vYhbWceW3qCTY7Qho8ZvwxDdjWvYebxFBsyCS4Zzm');
@@ -154,10 +160,31 @@ describe('useStake', () => {
       expect(result.current.error).toMatch(/market not found/i);
     });
 
+    it('returns null and sets error when slab owner is untrusted (assertTrustedProgram)', async () => {
+      setupConnectedWallet();
+      // Slab exists but owner is not in TRUSTED_PROGRAM_IDS
+      mockGetAccountInfo
+        .mockResolvedValueOnce({ data: Buffer.alloc(100), owner: TOKEN_PROGRAM_ID }); // untrusted owner
+
+      const { result } = renderHook(() => useStake());
+
+      let returnVal: any;
+      await act(async () => {
+        returnVal = await result.current.stakeDeposit({
+          slabAddress: SLAB_PK.toBase58(),
+          collateralMint: COLLATERAL_MINT.toBase58(),
+          amountBaseUnits: 1_000_000n,
+        });
+      });
+
+      expect(returnVal).toBeNull();
+      expect(result.current.error).toMatch(/untrusted program/i);
+    });
+
     it('returns null and sets error when stake pool not initialised (null pool account)', async () => {
       setupConnectedWallet();
       mockGetAccountInfo
-        .mockResolvedValueOnce({ data: Buffer.alloc(100), owner: STAKE_PROGRAM_ID }) // slab OK
+        .mockResolvedValueOnce({ data: Buffer.alloc(100), owner: TRUSTED_SLAB_OWNER }) // slab OK
         .mockResolvedValueOnce(null); // pool account missing
 
       const { result } = renderHook(() => useStake());
@@ -178,7 +205,7 @@ describe('useStake', () => {
     it('returns null and sets error when pool account too small', async () => {
       setupConnectedWallet();
       mockGetAccountInfo
-        .mockResolvedValueOnce({ data: Buffer.alloc(100), owner: STAKE_PROGRAM_ID }) // slab OK
+        .mockResolvedValueOnce({ data: Buffer.alloc(100), owner: TRUSTED_SLAB_OWNER }) // slab OK
         .mockResolvedValueOnce({ data: Buffer.alloc(50), owner: STAKE_PROGRAM_ID }); // pool too small
 
       const { result } = renderHook(() => useStake());
@@ -200,8 +227,8 @@ describe('useStake', () => {
       setupConnectedWallet();
       const poolData = makePoolAccountData(LP_MINT, VAULT);
       mockGetAccountInfo
-        .mockResolvedValueOnce({ data: Buffer.alloc(100), owner: STAKE_PROGRAM_ID }) // slab OK
-        .mockResolvedValueOnce({ data: poolData, owner: TOKEN_PROGRAM_ID }); // wrong owner
+        .mockResolvedValueOnce({ data: Buffer.alloc(100), owner: TRUSTED_SLAB_OWNER }) // slab OK
+        .mockResolvedValueOnce({ data: poolData, owner: TOKEN_PROGRAM_ID }); // wrong pool owner
 
       const { result } = renderHook(() => useStake());
 
@@ -261,8 +288,8 @@ describe('useStake', () => {
       const poolData = makePoolAccountData(LP_MINT, VAULT);
 
       mockGetAccountInfo
-        .mockResolvedValueOnce({ data: Buffer.alloc(100), owner: STAKE_PROGRAM_ID }) // slab
-        .mockResolvedValueOnce({ data: poolData, owner: STAKE_PROGRAM_ID })          // pool
+        .mockResolvedValueOnce({ data: Buffer.alloc(100), owner: TRUSTED_SLAB_OWNER }) // slab
+        .mockResolvedValueOnce({ data: poolData, owner: STAKE_PROGRAM_ID })             // pool
         .mockResolvedValueOnce(null) // collateral ATA missing
         .mockResolvedValueOnce(null); // LP ATA missing
 
@@ -290,8 +317,8 @@ describe('useStake', () => {
       const existingAta = { data: Buffer.alloc(165), owner: TOKEN_PROGRAM_ID };
 
       mockGetAccountInfo
-        .mockResolvedValueOnce({ data: Buffer.alloc(100), owner: STAKE_PROGRAM_ID }) // slab
-        .mockResolvedValueOnce({ data: poolData, owner: STAKE_PROGRAM_ID })          // pool
+        .mockResolvedValueOnce({ data: Buffer.alloc(100), owner: TRUSTED_SLAB_OWNER }) // slab
+        .mockResolvedValueOnce({ data: poolData, owner: STAKE_PROGRAM_ID })             // pool
         .mockResolvedValueOnce(existingAta) // collateral ATA exists
         .mockResolvedValueOnce(existingAta); // LP ATA exists
 
@@ -312,12 +339,51 @@ describe('useStake', () => {
       expect(result.current.error).toBeNull();
     });
 
+    it('returns null and sets error when MWA returns empty signatures (deposit)', async () => {
+      setupConnectedWallet();
+      const poolData = makePoolAccountData(LP_MINT, VAULT);
+
+      mockGetAccountInfo
+        .mockResolvedValueOnce({ data: Buffer.alloc(100), owner: TRUSTED_SLAB_OWNER })
+        .mockResolvedValueOnce({ data: poolData, owner: STAKE_PROGRAM_ID })
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(null);
+
+      // Override transact to return empty signatures array
+      mockTransact.mockImplementationOnce((cb: any) =>
+        cb({
+          authorize: jest.fn(() =>
+            Promise.resolve({
+              accounts: [{ address: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=', publicKey: new Uint8Array(32) }],
+              auth_token: 'mock-auth-token',
+            }),
+          ),
+          signAndSendTransactions: jest.fn(() => Promise.resolve({ signatures: [] })),
+          deauthorize: jest.fn(() => Promise.resolve()),
+        }),
+      );
+
+      const { result } = renderHook(() => useStake());
+
+      let returnVal: any;
+      await act(async () => {
+        returnVal = await result.current.stakeDeposit({
+          slabAddress: SLAB_PK.toBase58(),
+          collateralMint: COLLATERAL_MINT.toBase58(),
+          amountBaseUnits: 1_000_000n,
+        });
+      });
+
+      expect(returnVal).toBeNull();
+      expect(result.current.error).toMatch(/did not return a transaction signature/i);
+    });
+
     it('accepts MAX_AMOUNT_BASE_UNITS exactly (boundary — at limit)', async () => {
       setupConnectedWallet();
       const poolData = makePoolAccountData(LP_MINT, VAULT);
 
       mockGetAccountInfo
-        .mockResolvedValueOnce({ data: Buffer.alloc(100), owner: STAKE_PROGRAM_ID })
+        .mockResolvedValueOnce({ data: Buffer.alloc(100), owner: TRUSTED_SLAB_OWNER })
         .mockResolvedValueOnce({ data: poolData, owner: STAKE_PROGRAM_ID })
         .mockResolvedValueOnce(null)
         .mockResolvedValueOnce(null);
@@ -359,6 +425,27 @@ describe('useStake', () => {
       expect(result.current.error).toMatch(/wallet not connected/i);
     });
 
+    it('returns null and sets error when slab owner is untrusted (assertTrustedProgram)', async () => {
+      setupConnectedWallet();
+      // Slab exists but owner is not in TRUSTED_PROGRAM_IDS
+      mockGetAccountInfo
+        .mockResolvedValueOnce({ data: Buffer.alloc(100), owner: TOKEN_PROGRAM_ID }); // untrusted
+
+      const { result } = renderHook(() => useStake());
+
+      let returnVal: any;
+      await act(async () => {
+        returnVal = await result.current.stakeWithdraw({
+          slabAddress: SLAB_PK.toBase58(),
+          collateralMint: COLLATERAL_MINT.toBase58(),
+          lpAmountBaseUnits: 500_000n,
+        });
+      });
+
+      expect(returnVal).toBeNull();
+      expect(result.current.error).toMatch(/untrusted program/i);
+    });
+
     it('returns null and sets error when LP ATA missing (must deposit first)', async () => {
       setupConnectedWallet();
       const poolData = makePoolAccountData(LP_MINT, VAULT);
@@ -366,8 +453,8 @@ describe('useStake', () => {
       // Flow: slab → pool → lpAta (null → throws before collAta check)
       // Only 3 calls needed — do NOT add extra mockResolvedValueOnce for collAta
       mockGetAccountInfo
-        .mockResolvedValueOnce({ data: Buffer.alloc(100), owner: STAKE_PROGRAM_ID }) // slab
-        .mockResolvedValueOnce({ data: poolData, owner: STAKE_PROGRAM_ID })          // pool
+        .mockResolvedValueOnce({ data: Buffer.alloc(100), owner: TRUSTED_SLAB_OWNER }) // slab
+        .mockResolvedValueOnce({ data: poolData, owner: STAKE_PROGRAM_ID })             // pool
         .mockResolvedValueOnce(null); // LP ATA missing → throws
 
       const { result } = renderHook(() => useStake());
@@ -423,6 +510,47 @@ describe('useStake', () => {
       expect(result.current.error).toMatch(/exceeds maximum/i);
     });
 
+    it('returns null and sets error when MWA returns empty signatures (withdraw)', async () => {
+      setupConnectedWallet();
+      const poolData = makePoolAccountData(LP_MINT, VAULT);
+      const existingLpAta = { data: Buffer.alloc(165), owner: TOKEN_PROGRAM_ID };
+      const existingCollAta = { data: Buffer.alloc(165), owner: TOKEN_PROGRAM_ID };
+
+      mockGetAccountInfo
+        .mockResolvedValueOnce({ data: Buffer.alloc(100), owner: TRUSTED_SLAB_OWNER })
+        .mockResolvedValueOnce({ data: poolData, owner: STAKE_PROGRAM_ID })
+        .mockResolvedValueOnce(existingLpAta)
+        .mockResolvedValueOnce(existingCollAta);
+
+      // Override transact to return empty signatures array
+      mockTransact.mockImplementationOnce((cb: any) =>
+        cb({
+          authorize: jest.fn(() =>
+            Promise.resolve({
+              accounts: [{ address: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=', publicKey: new Uint8Array(32) }],
+              auth_token: 'mock-auth-token',
+            }),
+          ),
+          signAndSendTransactions: jest.fn(() => Promise.resolve({ signatures: [] })),
+          deauthorize: jest.fn(() => Promise.resolve()),
+        }),
+      );
+
+      const { result } = renderHook(() => useStake());
+
+      let returnVal: any;
+      await act(async () => {
+        returnVal = await result.current.stakeWithdraw({
+          slabAddress: SLAB_PK.toBase58(),
+          collateralMint: COLLATERAL_MINT.toBase58(),
+          lpAmountBaseUnits: 500_000n,
+        });
+      });
+
+      expect(returnVal).toBeNull();
+      expect(result.current.error).toMatch(/did not return a transaction signature/i);
+    });
+
     it('sends withdraw tx and returns signature (LP ATA exists)', async () => {
       setupConnectedWallet();
       const poolData = makePoolAccountData(LP_MINT, VAULT);
@@ -430,8 +558,8 @@ describe('useStake', () => {
       const existingCollAta = { data: Buffer.alloc(165), owner: TOKEN_PROGRAM_ID };
 
       mockGetAccountInfo
-        .mockResolvedValueOnce({ data: Buffer.alloc(100), owner: STAKE_PROGRAM_ID }) // slab
-        .mockResolvedValueOnce({ data: poolData, owner: STAKE_PROGRAM_ID })          // pool
+        .mockResolvedValueOnce({ data: Buffer.alloc(100), owner: TRUSTED_SLAB_OWNER }) // slab
+        .mockResolvedValueOnce({ data: poolData, owner: STAKE_PROGRAM_ID })             // pool
         .mockResolvedValueOnce(existingLpAta)  // LP ATA exists (preflight)
         .mockResolvedValueOnce(existingCollAta); // collateral ATA exists
 
@@ -459,8 +587,8 @@ describe('useStake', () => {
       const existingLpAta = { data: Buffer.alloc(165), owner: TOKEN_PROGRAM_ID };
 
       mockGetAccountInfo
-        .mockResolvedValueOnce({ data: Buffer.alloc(100), owner: STAKE_PROGRAM_ID }) // slab
-        .mockResolvedValueOnce({ data: poolData, owner: STAKE_PROGRAM_ID })          // pool
+        .mockResolvedValueOnce({ data: Buffer.alloc(100), owner: TRUSTED_SLAB_OWNER }) // slab
+        .mockResolvedValueOnce({ data: poolData, owner: STAKE_PROGRAM_ID })             // pool
         .mockResolvedValueOnce(existingLpAta) // LP ATA exists
         .mockResolvedValueOnce(null);          // collateral ATA missing → creates it
 
@@ -489,8 +617,8 @@ describe('useStake', () => {
 
       // Flow: slab → pool → lpAta (preflight) → collAta
       mockGetAccountInfo
-        .mockResolvedValueOnce({ data: Buffer.alloc(100), owner: STAKE_PROGRAM_ID }) // slab
-        .mockResolvedValueOnce({ data: poolData, owner: STAKE_PROGRAM_ID })          // pool
+        .mockResolvedValueOnce({ data: Buffer.alloc(100), owner: TRUSTED_SLAB_OWNER }) // slab
+        .mockResolvedValueOnce({ data: poolData, owner: STAKE_PROGRAM_ID })             // pool
         .mockResolvedValueOnce(existingLpAta)   // LP ATA
         .mockResolvedValueOnce(existingCollAta); // collateral ATA
 

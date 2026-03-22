@@ -31,7 +31,10 @@ const IX_INIT_USER = 1;
 const IX_DEPOSIT_COLLATERAL = 3;
 const IX_WITHDRAW_COLLATERAL = 4;
 const IX_KEEPER_CRANK = 5; // was wrongly 8 (CloseAccount)
-const IX_TRADE_CPI = 10;
+// TradeCpiV2 (tag 35, PERC-154): includes caller-provided PDA bump → saves ~1500 CU.
+// Uses create_program_address instead of find_program_address on-chain.
+// (TradeCpi tag 10 superseded by V2.)
+const IX_TRADE_CPI_V2 = 35;
 
 // ---------------------------------------------------------------------------
 // Binary encoding helpers
@@ -152,14 +155,18 @@ function findFirstLP(data: Uint8Array, layout: SlabLayout): LPAccount | null {
 // LP PDA derivation (mirrors packages/core/src/solana/pda.ts)
 // ---------------------------------------------------------------------------
 
-function deriveLpPda(programId: PublicKey, slab: PublicKey, lpIdx: number): PublicKey {
+function deriveLpPda(
+  programId: PublicKey,
+  slab: PublicKey,
+  lpIdx: number,
+): { pda: PublicKey; bump: number } {
   const idxBuf = new Uint8Array(2);
   new DataView(idxBuf.buffer).setUint16(0, lpIdx, true);
-  const [pda] = PublicKey.findProgramAddressSync(
+  const [pda, bump] = PublicKey.findProgramAddressSync(
     [new TextEncoder().encode('lp'), slab.toBytes(), idxBuf],
     programId,
   );
-  return pda;
+  return { pda, bump };
 }
 
 // ---------------------------------------------------------------------------
@@ -333,7 +340,13 @@ function buildKeeperCrankIx(
   ], data);
 }
 
-function buildTradeCpiIx(
+/**
+ * TradeCpiV2 (tag 35, PERC-154) — uses caller-provided bump, saving ~1500 CU.
+ * The bump is obtained from deriveLpPda() and passes create_program_address
+ * instead of find_program_address on-chain.
+ * 7 accounts (PERC-199: Clock::get() syscall replaces sysvar).
+ */
+function buildTradeCpiV2Ix(
   programId: PublicKey,
   user: PublicKey,
   lpOwner: PublicKey,
@@ -345,14 +358,15 @@ function buildTradeCpiIx(
   lpIdx: number,
   userIdx: number,
   sizeE6: bigint,
+  bump: number,
 ): TransactionInstruction {
   const data = concat(
-    encU8(IX_TRADE_CPI),
+    encU8(IX_TRADE_CPI_V2),
     encU16LE(lpIdx),
     encU16LE(userIdx),
     encI128LE(sizeE6),
+    encU8(bump),
   );
-  // 7 accounts after PERC-199 (Clock::get() syscall replaces clock sysvar)
   return buildIx(programId, [
     meta(user, true, true),
     meta(lpOwner, false, false),
@@ -423,8 +437,8 @@ export function useTrade(): UseTradeResult {
           ? slabPk
           : derivePythPushOraclePDA(config.feedIdHex);
 
-        // 3. Derive LP PDA
-        const lpPda = deriveLpPda(config.programId, slabPk, lp.idx);
+        // 3. Derive LP PDA + bump for TradeCpiV2 (saves ~1500 CU vs TradeCpi)
+        const { pda: lpPda, bump: lpBump } = deriveLpPda(config.programId, slabPk, lp.idx);
 
         // 4. Find user account index (scan for owner)
         // 5. Check if user account exists on the slab; if not, prepend InitUser
@@ -497,7 +511,9 @@ export function useTrade(): UseTradeResult {
           slabPk,
           oracle,
         );
-        const tradeIx = buildTradeCpiIx(
+        // Use TradeCpiV2 (tag 35) — passes LP PDA bump to avoid on-chain
+        // find_program_address, saving ~1500 CU per trade (PERC-154).
+        const tradeIx = buildTradeCpiV2Ix(
           config.programId,
           publicKey,
           lp.owner,
@@ -509,6 +525,7 @@ export function useTrade(): UseTradeResult {
           lp.idx,
           userIdx,
           sizeE6,
+          lpBump,
         );
 
         tx.add(crankIx);

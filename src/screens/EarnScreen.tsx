@@ -9,6 +9,7 @@ import {
   RefreshControl,
   ActivityIndicator,
   Image,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, radii } from '../theme/tokens';
@@ -16,6 +17,8 @@ import { fonts } from '../theme/fonts';
 import { Panel } from '../components/ui/Panel';
 import { useMarkets } from '../hooks/useMarkets';
 import { api, type InsuranceData } from '../lib/api';
+import { useMWA } from '../hooks/useMWA';
+import { useInsuranceLP } from '../hooks/useInsuranceLP';
 
 /* ── Helpers ─────────────────────────────────────────────────────── */
 
@@ -82,7 +85,8 @@ const VaultCard = memo(function VaultCard({ vault }: { vault: VaultInfo }) {
   const [expanded, setExpanded] = useState(false);
   const [mode, setMode] = useState<'deposit' | 'withdraw'>('deposit');
   const [amount, setAmount] = useState('');
-  const [confirming, setConfirming] = useState(false);
+  const { connected } = useMWA();
+  const { submitting: confirming, error: txError, depositInsuranceLP, withdrawInsuranceLP } = useInsuranceLP();
 
   const maxOi = 5_000_000;
   const oiPct = Math.min((vault.totalOpenInterest ?? 0) / maxOi, 1);
@@ -92,14 +96,57 @@ const VaultCard = memo(function VaultCard({ vault }: { vault: VaultInfo }) {
     colors.short;
 
   const handleConfirm = useCallback(async () => {
-    if (!amount || parseFloat(amount) <= 0) return;
-    setConfirming(true);
-    // Placeholder — actual on-chain tx via MWA would go here
-    await new Promise((r) => setTimeout(r, 1500));
-    setConfirming(false);
-    setAmount('');
-    setExpanded(false);
-  }, [amount]);
+    const amountNum = parseFloat(amount);
+    if (!amount || amountNum <= 0) return;
+
+    if (!connected) {
+      Alert.alert('Wallet Required', 'Please connect your wallet to deposit or withdraw.');
+      return;
+    }
+
+    // Convert USD dollar amount to base token units.
+    // Insurance vaults use the market's collateral token (typically USDC, 6 decimals).
+    const baseUnits = BigInt(Math.round(amountNum * 10 ** vault.decimals));
+
+    const action = mode === 'deposit' ? 'Deposit' : 'Withdraw';
+    Alert.alert(
+      `Confirm ${action}`,
+      `${action} $${amountNum.toFixed(2)} to ${vault.symbol} Insurance Vault`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: action,
+          onPress: async () => {
+            let result = null;
+            if (mode === 'deposit') {
+              result = await depositInsuranceLP({
+                slabAddress: vault.slabAddress,
+                amountBaseUnits: baseUnits,
+              });
+            } else {
+              // Withdraw: lpAmountBaseUnits ≈ amount of LP tokens to burn.
+              // LP tokens are 1:1 with collateral at inception; use same base units.
+              result = await withdrawInsuranceLP({
+                slabAddress: vault.slabAddress,
+                lpAmountBaseUnits: baseUnits,
+              });
+            }
+
+            if (result) {
+              Alert.alert(
+                `✅ ${action} Successful`,
+                `Tx: ${result.signature.slice(0, 16)}…`,
+                [{ text: 'OK' }],
+              );
+              setAmount('');
+              setExpanded(false);
+            }
+            // On failure, txError is set by the hook — rendered below
+          },
+        },
+      ],
+    );
+  }, [amount, mode, connected, vault.slabAddress, vault.decimals, depositInsuranceLP, withdrawInsuranceLP]);
 
   return (
     <Panel style={styles.card}>
@@ -163,6 +210,12 @@ const VaultCard = memo(function VaultCard({ vault }: { vault: VaultInfo }) {
       {/* Expanded deposit / withdraw section */}
       {expanded && (
         <View style={styles.expandedSection}>
+          {/* Tx error */}
+          {txError != null && (
+            <View style={styles.txErrorRow}>
+              <Text style={styles.txErrorText}>{txError}</Text>
+            </View>
+          )}
           {/* Mode toggle */}
           <View style={styles.modeToggle}>
             <TouchableOpacity
@@ -654,5 +707,18 @@ const styles = StyleSheet.create({
     fontFamily: fonts.body,
     fontSize: 14,
     color: colors.textMuted,
+  },
+  /* Tx error */
+  txErrorRow: {
+    backgroundColor: 'rgba(255,59,92,0.12)',
+    borderRadius: radii.md,
+    padding: 10,
+    marginBottom: 10,
+  },
+  txErrorText: {
+    fontFamily: fonts.body,
+    fontSize: 12,
+    color: colors.short,
+    textAlign: 'center' as const,
   },
 });

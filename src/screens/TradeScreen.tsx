@@ -36,12 +36,16 @@ type TradeRouteParams = {
   Trade: { direction?: 'long' | 'short' } | undefined;
 };
 
-/** Parse a legacy string leverage value like "5x" or "10x" to a number */
+const VALID_LEVERAGE_TICKS = [1, 2, 5, 10, 20] as const;
+
+/** Parse a legacy string leverage value like "5x" or "10x" to a valid LeverageTick */
 function parseLeverageSetting(raw: string | number | undefined): LeverageTick {
-  if (typeof raw === 'number') return raw as LeverageTick;
+  if (typeof raw === 'number') {
+    return (VALID_LEVERAGE_TICKS.includes(raw as LeverageTick) ? raw : 5) as LeverageTick;
+  }
   if (!raw) return 5;
   const n = parseInt(String(raw), 10);
-  return ([1, 2, 5, 10, 20].includes(n) ? n : 5) as LeverageTick;
+  return (VALID_LEVERAGE_TICKS.includes(n as LeverageTick) ? n : 5) as LeverageTick;
 }
 
 export function TradeScreen() {
@@ -79,16 +83,14 @@ export function TradeScreen() {
     if (navDirection) setDirection(navDirection);
   }, [navDirection]);
 
-  // Load settings on mount; once loaded, sync leverage from persisted default
+  // Load settings on mount; once loaded (or when defaultLeverage changes), sync leverage
   useEffect(() => {
     if (!settings.loaded) {
       settings.load();
     } else {
-      // Settings just became ready — update leverage to match persisted default
       setLeverage(parseLeverageSetting(settings.defaultLeverage));
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settings.loaded]);
+  }, [settings.loaded, settings.defaultLeverage]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Use live streamed price → API market price → last price history point → 0
   const price = livePrice
@@ -403,13 +405,14 @@ export function TradeScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Size Input */}
+        {/* Size Input — §4.5: $ prefix + styled MAX button */}
         <InputField
           label={`Size (${symbol.split('-')[0]})`}
           value={size}
           onChangeText={setSize}
           placeholder="0.00"
           keyboardType="decimal-pad"
+          prefix="$"
           rightAction={{
             label: 'MAX',
             onPress: () => {

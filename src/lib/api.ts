@@ -42,6 +42,8 @@ export interface MarketData {
   /** 24h volume in USD (volume_24h_usd when available, else raw volume_24h atom) */
   volume24h: number | null;
   isZombie: boolean;
+  /** ISO-8601 timestamp when the market was created (from created_at), or null if not available */
+  createdAt: string | null;
 }
 
 /**
@@ -66,6 +68,7 @@ interface RawMarketData {
   volume_24h: number | null;
   volume_24h_usd: number | null;
   is_zombie: boolean;
+  created_at?: string | null;
 }
 
 /**
@@ -90,6 +93,7 @@ function normalizeMarket(m: RawMarketData): MarketData {
     fundingRate: m.funding_rate ?? null,
     volume24h: m.volume_24h_usd ?? m.volume_24h ?? null,
     isZombie: m.is_zombie ?? false,
+    createdAt: m.created_at ?? null,
   };
 }
 

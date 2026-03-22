@@ -28,6 +28,8 @@ export interface Market {
   /** 24h volume in USD (volume_24h_usd when available, else raw volume_24h) */
   volume24h: number | null;
   isZombie: boolean;
+  /** ISO-8601 timestamp when the market was created (from created_at), or null */
+  createdAt: string | null;
 }
 
 /**
@@ -53,6 +55,7 @@ function mapMarket(m: MarketData): Market {
     decimals: m.decimals ?? 6,
     volume24h: m.volume24h ?? null,
     isZombie: m.isZombie ?? false,
+    createdAt: m.createdAt ?? null,
   };
 }
 

@@ -290,8 +290,13 @@ export function MarketsScreen() {
         );
         break;
       case 'Newest':
-        // Newest first — markets don't have createdAt yet; use array order (reverse)
-        result.reverse();
+        // Sort by createdAt descending; nulls sink to bottom
+        result.sort((a, b) => {
+          if (!a.createdAt && !b.createdAt) return 0;
+          if (!a.createdAt) return 1;
+          if (!b.createdAt) return -1;
+          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        });
         break;
       case 'Volume ↓':
         result.sort((a, b) => (b.volume24h ?? b.totalOpenInterest ?? 0) - (a.volume24h ?? a.totalOpenInterest ?? 0));

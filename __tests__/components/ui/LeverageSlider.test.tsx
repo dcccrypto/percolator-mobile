@@ -94,12 +94,12 @@ describe('LeverageSlider', () => {
     expect(hitArea.props.accessibilityValue).toMatchObject({ min: 1, max: 20, now: 5 });
   });
 
-  it('fires onChange with a valid LeverageTick on pan release', () => {
+  it('fires onChange with the correct snapped LeverageTick on pan release', () => {
     const onChange = jest.fn();
     // Capture the config passed to PanResponder.create so we can invoke callbacks directly
     let capturedConfig: Record<string, Function> = {};
     const originalCreate = PanResponder.create.bind(PanResponder);
-    jest.spyOn(PanResponder, 'create').mockImplementationOnce((config) => {
+    const spy = jest.spyOn(PanResponder, 'create').mockImplementationOnce((config) => {
       capturedConfig = config as Record<string, Function>;
       return originalCreate(config);
     });
@@ -109,13 +109,13 @@ describe('LeverageSlider', () => {
     );
     const hitArea = UNSAFE_getByProps({ accessibilityRole: 'adjustable' });
 
-    // Simulate layout so liveWidth.current is set (does not trigger setState for test purposes)
+    // Simulate layout so liveWidth.current is set
     act(() => {
       hitArea.props.onLayout({ nativeEvent: { layout: { x: 0, y: 0, width: 300, height: 32 } } });
     });
 
     // Invoke PanResponder callbacks directly at locationX=240 (80% of 300px):
-    // fraction=0.8 → raw=round(0.8*19+1)=16 → snaps to 20
+    // fraction=0.8 → raw=round(0.8*19+1)=16 → snapToTick(16) → nearest tick = 20
     const mockEvt = { nativeEvent: { locationX: 240, locationY: 16 } };
     const mockGs = { dx: 10, dy: 0, moveX: 240, moveY: 16, vx: 0, vy: 0, x0: 50, y0: 16, numberActiveTouches: 1 };
     act(() => {
@@ -125,6 +125,29 @@ describe('LeverageSlider', () => {
 
     expect(onChange).toHaveBeenCalled();
     const lastCall = onChange.mock.calls[onChange.mock.calls.length - 1][0];
-    expect(LEVERAGE_TICKS).toContain(lastCall);
+    // locationX=240/width=300 = 0.8 → raw≈16 → nearest tick is 20
+    expect(lastCall).toBe(20);
+
+    spy.mockRestore();
+  });
+
+  it('fires onChange via onAccessibilityAction increment/decrement', () => {
+    const onChange = jest.fn();
+    const { UNSAFE_getByProps } = render(
+      <LeverageSlider value={5} onChange={onChange} testID="leverage-slider" />,
+    );
+    const hitArea = UNSAFE_getByProps({ accessibilityRole: 'adjustable' });
+
+    // Increment from 5× → 10×
+    act(() => {
+      hitArea.props.onAccessibilityAction({ nativeEvent: { actionName: 'increment' } });
+    });
+    expect(onChange).toHaveBeenLastCalledWith(10);
+
+    // Decrement from 5× → 2× (value prop still 5 — component reads prop, not state)
+    act(() => {
+      hitArea.props.onAccessibilityAction({ nativeEvent: { actionName: 'decrement' } });
+    });
+    expect(onChange).toHaveBeenLastCalledWith(2);
   });
 });

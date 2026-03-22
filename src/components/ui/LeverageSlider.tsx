@@ -15,6 +15,7 @@ import {
   Text,
   Animated,
   PanResponder,
+  Pressable,
   StyleSheet,
   LayoutChangeEvent,
   GestureResponderEvent,
@@ -151,7 +152,17 @@ export function LeverageSlider({ value, onChange, testID }: Props) {
         onLayout={onLayout}
         accessibilityRole="adjustable"
         accessibilityLabel="Leverage slider"
-        accessibilityValue={{ min: MIN, max: MAX, now: value }}
+        accessibilityValue={{ min: MIN, max: MAX, now: value, text: `${snapToTick(value)}×` }}
+        accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
+        onAccessibilityAction={(event) => {
+          const currentTick = snapToTick(value);
+          const idx = LEVERAGE_TICKS.indexOf(currentTick);
+          if (event.nativeEvent.actionName === 'increment') {
+            if (idx < LEVERAGE_TICKS.length - 1) onChange(LEVERAGE_TICKS[idx + 1]);
+          } else if (event.nativeEvent.actionName === 'decrement') {
+            if (idx > 0) onChange(LEVERAGE_TICKS[idx - 1]);
+          }
+        }}
         {...panResponder.panHandlers}
       >
         {/* Track */}
@@ -168,20 +179,26 @@ export function LeverageSlider({ value, onChange, testID }: Props) {
         )}
       </View>
 
-      {/* Tick labels */}
+      {/* Tick labels — pressable for screen-reader / tap-to-set */}
       <View style={styles.tickRow}>
         {LEVERAGE_TICKS.map((tick) => {
           const frac = valueToFraction(tick);
           const isActive = snapToTick(value) === tick;
           return (
-            <View
+            <Pressable
               key={tick}
+              accessible
+              accessibilityRole="button"
+              accessibilityLabel={`${tick}× leverage`}
+              accessibilityState={{ selected: isActive }}
+              onPress={() => onChange(tick)}
               style={[styles.tickLabelWrap, { left: `${frac * 100}%` as unknown as number }]}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
               <Text style={[styles.tickText, isActive && styles.tickTextActive]}>
                 {tick}×
               </Text>
-            </View>
+            </Pressable>
           );
         })}
       </View>

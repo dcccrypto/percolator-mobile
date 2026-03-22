@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, TextInput, Text, StyleSheet, ViewStyle } from 'react-native';
+import { View, TextInput, Text, Pressable, StyleSheet, ViewStyle } from 'react-native';
 import { colors, radii } from '../../theme/tokens';
 import { fonts } from '../../theme/fonts';
 
@@ -8,6 +8,8 @@ interface InputFieldProps {
   value: string;
   onChangeText: (text: string) => void;
   placeholder?: string;
+  /** Prefix displayed inside the input row — e.g. "$" for size inputs. */
+  prefix?: string;
   suffix?: string;
   rightAction?: { label: string; onPress: () => void };
   keyboardType?: 'default' | 'numeric' | 'decimal-pad';
@@ -23,6 +25,7 @@ export function InputField({
   value,
   onChangeText,
   placeholder,
+  prefix,
   suffix,
   rightAction,
   keyboardType = 'default',
@@ -35,6 +38,7 @@ export function InputField({
     <View style={style}>
       {label && <Text style={styles.label}>{label}</Text>}
       <View style={styles.container}>
+        {prefix && <Text style={styles.prefix}>{prefix}</Text>}
         <TextInput
           style={styles.input}
           value={value}
@@ -49,9 +53,15 @@ export function InputField({
         />
         {suffix && <Text style={styles.suffix}>{suffix}</Text>}
         {rightAction && (
-          <Text style={styles.rightAction} onPress={rightAction.onPress}>
-            {rightAction.label}
-          </Text>
+          <Pressable
+            onPress={rightAction.onPress}
+            style={({ pressed }) => [styles.maxBtn, pressed && { opacity: 0.75 }]}
+            accessibilityRole="button"
+            accessibilityLabel={rightAction.label}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Text style={styles.maxBtnText}>{rightAction.label}</Text>
+          </Pressable>
         )}
       </View>
     </View>
@@ -73,6 +83,12 @@ const styles = StyleSheet.create({
     borderRadius: radii.lg,
     paddingHorizontal: 16,
   },
+  prefix: {
+    fontFamily: fonts.mono,
+    fontSize: 20,
+    color: colors.textMuted,
+    marginRight: 4,
+  },
   input: {
     flex: 1,
     fontFamily: fonts.mono,
@@ -85,11 +101,21 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     marginLeft: 8,
   },
-  rightAction: {
+  /** §4.5 MAX button — accentPillBg bg, accent text, radii.full, 36px height */
+  maxBtn: {
+    backgroundColor: colors.accentPillBg,
+    borderRadius: radii.full,
+    height: 36,
+    paddingHorizontal: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 10,
+  },
+  maxBtnText: {
     fontFamily: fonts.display,
     fontSize: 13,
-    fontWeight: '600',
-    color: colors.cyan,
-    marginLeft: 8,
+    fontWeight: '700',
+    color: colors.accent,
+    letterSpacing: 0.5,
   },
 });

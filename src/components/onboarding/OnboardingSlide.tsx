@@ -8,6 +8,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { fonts } from '../../theme/fonts';
 import { colors } from '../../theme/tokens';
+import { OnboardingIcon } from '../icons/OnboardingIcon';
 
 // ---------------------------------------------------------------------------
 // Asset map — slide index (1-based) → require()
@@ -28,6 +29,12 @@ export interface OnboardingSlideData {
   index: 1 | 2 | 3;
   title: string;
   subtitle: string;
+  /**
+   * Optional SVG icon type — when provided, renders the brand SVG mark
+   * (OnboardingIcon) instead of the PNG illustration asset.
+   * Spec: mobile-oi-bar-and-onboarding-icons-spec.md — Part B
+   */
+  icon?: 'perps' | 'onchain' | 'deploy';
 }
 
 export interface OnboardingSlideProps {
@@ -103,15 +110,20 @@ export function OnboardingSlide({
       style={[styles.slide, animatedStyle]}
       testID={`onboarding-slide-${slide.index}`}
     >
+      {/* Prefer SVG brand icon when `icon` prop is set; fall back to PNG asset */}
       <View
         style={[styles.imageWrap, { width: imgSize, height: imgSize }]}
         testID={`onboarding-slide-image-${slide.index}`}
       >
-        <Image
-          source={SLIDE_IMAGES[slide.index]}
-          style={{ width: imgSize, height: imgSize }}
-          resizeMode="contain"
-        />
+        {slide.icon ? (
+          <OnboardingIcon type={slide.icon} size={72} />
+        ) : (
+          <Image
+            source={SLIDE_IMAGES[slide.index]}
+            style={{ width: imgSize, height: imgSize }}
+            resizeMode="contain"
+          />
+        )}
       </View>
 
       <Text style={styles.title}>{slide.title}</Text>

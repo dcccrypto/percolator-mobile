@@ -29,11 +29,14 @@ const SLIDES: OnboardingSlideData[] = [
     index: 1,
     title: 'Permissionless Perps\non Solana',
     subtitle: 'Trade any asset with leverage. No gatekeepers. No KYC.',
+    // SVG brand icon — spec: mobile-oi-bar-and-onboarding-icons-spec.md Part B
+    icon: 'perps' as const,
   },
   {
     index: 2,
     title: 'Fully On-Chain',
     subtitle: 'Every trade, every position — verifiable on Solana.',
+    icon: 'onchain' as const,
   },
   {
     index: 3,
@@ -41,6 +44,7 @@ const SLIDES: OnboardingSlideData[] = [
     // Subtitle spells out "seconds" to keep context unambiguous.
     title: 'Deploy in 60',
     subtitle: 'Create your own perpetual market in under 60 seconds.',
+    icon: 'deploy' as const,
   },
 ];
 

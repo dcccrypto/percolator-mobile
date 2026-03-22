@@ -96,8 +96,20 @@ const VaultCard = memo(function VaultCard({ vault }: { vault: VaultInfo }) {
     colors.short;
 
   const handleConfirm = useCallback(async () => {
-    const amountNum = parseFloat(amount);
-    if (!amount || amountNum <= 0) return;
+    // Validate and normalise input before any numeric conversion.
+    // Trim whitespace, replace locale commas, enforce strict decimal pattern.
+    const trimmed = amount.trim().replace(/,/g, '.');
+    const DECIMAL_RE = /^\d+(\.\d+)?$/;
+    if (!trimmed || !DECIMAL_RE.test(trimmed)) {
+      Alert.alert('Invalid Amount', 'Please enter a valid number (e.g. 10 or 10.50).');
+      return;
+    }
+
+    const amountNum = parseFloat(trimmed);
+    if (!Number.isFinite(amountNum) || amountNum <= 0) {
+      Alert.alert('Invalid Amount', 'Amount must be greater than zero.');
+      return;
+    }
 
     if (!connected) {
       Alert.alert('Wallet Required', 'Please connect your wallet to deposit or withdraw.');
@@ -108,7 +120,12 @@ const VaultCard = memo(function VaultCard({ vault }: { vault: VaultInfo }) {
     // Insurance vaults use the market's collateral token (typically USDC, 6 decimals).
     // Guard against undefined/null decimals from poorly-hydrated API responses (issue #128).
     const decimals = vault.decimals ?? 6;
-    const baseUnits = BigInt(Math.round(amountNum * 10 ** decimals));
+    const rawUnits = Math.round(amountNum * 10 ** decimals);
+    if (!Number.isFinite(rawUnits) || rawUnits <= 0) {
+      Alert.alert('Invalid Amount', 'Amount too large or invalid.');
+      return;
+    }
+    const baseUnits = BigInt(rawUnits);
 
     const action = mode === 'deposit' ? 'Deposit' : 'Withdraw';
     Alert.alert(

@@ -301,11 +301,13 @@ describe('useInsuranceLP', () => {
     it('sends withdraw tx and returns signature', async () => {
       setupConnectedWallet();
       const slabData = makeMockSlabData();
+      const existingAta = { lamports: 1 };
 
-      mockGetAccountInfo.mockResolvedValueOnce({
-        data: Buffer.from(slabData),
-        owner: PROGRAM_ID,
-      });
+      // getAccountInfo calls: slab, collateralAta, lpAta (all exist for a valid withdraw)
+      mockGetAccountInfo
+        .mockResolvedValueOnce({ data: Buffer.from(slabData), owner: PROGRAM_ID })
+        .mockResolvedValueOnce(existingAta)  // collateral ATA exists
+        .mockResolvedValueOnce(existingAta); // LP ATA exists
 
       const { result } = renderHook(() => useInsuranceLP());
 
@@ -324,14 +326,16 @@ describe('useInsuranceLP', () => {
       expect(result.current.submitting).toBe(false);
     });
 
-    it('withdraw tx has exactly 3 instructions (ComputeBudget×2 + WithdrawInsuranceLP)', async () => {
+    it('withdraw tx has exactly 3 instructions (ComputeBudget×2 + WithdrawInsuranceLP) when both ATAs exist', async () => {
       setupConnectedWallet();
       const slabData = makeMockSlabData();
+      const existingAta = { lamports: 1 };
 
-      mockGetAccountInfo.mockResolvedValueOnce({
-        data: Buffer.from(slabData),
-        owner: PROGRAM_ID,
-      });
+      // Both ATAs exist → no extra ATA create ix, just 2 CU budget + 1 withdraw = 3 total
+      mockGetAccountInfo
+        .mockResolvedValueOnce({ data: Buffer.from(slabData), owner: PROGRAM_ID })
+        .mockResolvedValueOnce(existingAta)  // collateral ATA
+        .mockResolvedValueOnce(existingAta); // LP ATA
 
       const addSpy = jest.spyOn(Transaction.prototype, 'add');
       const { result } = renderHook(() => useInsuranceLP());
@@ -359,6 +363,134 @@ describe('useInsuranceLP', () => {
     it('error is null initially', () => {
       const { result } = renderHook(() => useInsuranceLP());
       expect(result.current.error).toBeNull();
+    });
+  });
+
+  // ── Security: slab owner validation ───────────────────────────────────────
+
+  describe('slab owner / program validation', () => {
+    it('deposit rejects slab with untrusted programId', async () => {
+      setupConnectedWallet();
+      const slabData = makeMockSlabData();
+
+      // Overwrite programId bytes in config with a random unknown key
+      const UNKNOWN_PROGRAM = new PublicKey('So11111111111111111111111111111111111111112');
+      slabData.set(UNKNOWN_PROGRAM.toBytes(), 72 + 0); // CFG_OFF + CFG_PROGRAM_ID_OFF
+
+      mockGetAccountInfo.mockResolvedValueOnce({
+        data: Buffer.from(slabData),
+        owner: UNKNOWN_PROGRAM,
+      });
+
+      const { result } = renderHook(() => useInsuranceLP());
+      let returnVal: any;
+      await act(async () => {
+        returnVal = await result.current.depositInsuranceLP({
+          slabAddress: UNKNOWN_PROGRAM.toBase58(),
+          amountBaseUnits: 1_000_000n,
+        });
+      });
+
+      expect(returnVal).toBeNull();
+      expect(result.current.error).toMatch(/untrusted program/i);
+    });
+
+    it('withdraw rejects slab with untrusted programId', async () => {
+      setupConnectedWallet();
+      const slabData = makeMockSlabData();
+
+      const UNKNOWN_PROGRAM = new PublicKey('So11111111111111111111111111111111111111112');
+      slabData.set(UNKNOWN_PROGRAM.toBytes(), 72 + 0);
+
+      mockGetAccountInfo.mockResolvedValueOnce({
+        data: Buffer.from(slabData),
+        owner: UNKNOWN_PROGRAM,
+      });
+
+      const { result } = renderHook(() => useInsuranceLP());
+      let returnVal: any;
+      await act(async () => {
+        returnVal = await result.current.withdrawInsuranceLP({
+          slabAddress: UNKNOWN_PROGRAM.toBase58(),
+          lpAmountBaseUnits: 1_000_000n,
+        });
+      });
+
+      expect(returnVal).toBeNull();
+      expect(result.current.error).toMatch(/untrusted program/i);
+    });
+  });
+
+  // ── Security: amount overflow guard ───────────────────────────────────────
+
+  describe('amount overflow guard', () => {
+    it('deposit rejects amount exceeding MAX_AMOUNT_BASE_UNITS', async () => {
+      setupConnectedWallet();
+      const slabData = makeMockSlabData();
+      mockGetAccountInfo.mockResolvedValueOnce({
+        data: Buffer.from(slabData),
+        owner: PROGRAM_ID,
+      });
+
+      const { result } = renderHook(() => useInsuranceLP());
+      let returnVal: any;
+      await act(async () => {
+        returnVal = await result.current.depositInsuranceLP({
+          slabAddress: PROGRAM_ID.toBase58(),
+          amountBaseUnits: BigInt('9999999999999999999'), // way over 10^15
+        });
+      });
+
+      expect(returnVal).toBeNull();
+      expect(result.current.error).toMatch(/exceeds maximum/i);
+    });
+
+    it('withdraw rejects amount exceeding MAX_AMOUNT_BASE_UNITS', async () => {
+      setupConnectedWallet();
+      const slabData = makeMockSlabData();
+      mockGetAccountInfo.mockResolvedValueOnce({
+        data: Buffer.from(slabData),
+        owner: PROGRAM_ID,
+      });
+
+      const { result } = renderHook(() => useInsuranceLP());
+      let returnVal: any;
+      await act(async () => {
+        returnVal = await result.current.withdrawInsuranceLP({
+          slabAddress: PROGRAM_ID.toBase58(),
+          lpAmountBaseUnits: BigInt('9999999999999999999'),
+        });
+      });
+
+      expect(returnVal).toBeNull();
+      expect(result.current.error).toMatch(/exceeds maximum/i);
+    });
+  });
+
+  // ── Security: withdraw LP ATA preflight ───────────────────────────────────
+
+  describe('withdraw LP ATA preflight', () => {
+    it('withdraw fails with descriptive error when LP ATA is missing', async () => {
+      setupConnectedWallet();
+      const slabData = makeMockSlabData();
+
+      // getAccountInfo calls (in order): slab, collateralAta, lpAta
+      mockGetAccountInfo
+        .mockResolvedValueOnce({ data: Buffer.from(slabData), owner: PROGRAM_ID }) // slab
+        .mockResolvedValueOnce({ lamports: 1 })  // collateral ATA exists
+        .mockResolvedValueOnce(null);             // LP ATA missing
+
+      const { result } = renderHook(() => useInsuranceLP());
+      let returnVal: any;
+      await act(async () => {
+        returnVal = await result.current.withdrawInsuranceLP({
+          slabAddress: PROGRAM_ID.toBase58(),
+          lpAmountBaseUnits: 1_000_000n,
+        });
+      });
+
+      expect(returnVal).toBeNull();
+      expect(result.current.error).toMatch(/lp token account not found/i);
     });
   });
 });

@@ -20,6 +20,21 @@ const SLIDE_IMAGES: Record<1 | 2 | 3, number> = {
 };
 
 // ---------------------------------------------------------------------------
+// Glow config per slide — spec DESIGN-BRIEF-MOBILE-V2.md §5.1–5.4
+// ---------------------------------------------------------------------------
+const SLIDE_GLOW: Record<1 | 2 | 3, { color: string; size: number }> = {
+  1: { color: 'rgba(153,69,255,0.12)', size: 400 },   // §5.2 — purple
+  2: { color: 'rgba(20,241,149,0.08)',  size: 360 },   // §5.3 — Solana green
+  3: { color: 'rgba(153,69,255,0.15)', size: 420 },   // §5.4 — purple (wider)
+};
+
+// ---------------------------------------------------------------------------
+// Icon size when SVG brand marks are used (spec §5.1: "280×280px centred")
+// We render SVG at a size close to the spec target rather than a fixed 72px.
+// ---------------------------------------------------------------------------
+const SVG_ICON_SIZE = 200;
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 export type SlideDirection = 'left' | 'right' | 'none';
@@ -65,6 +80,11 @@ export interface OnboardingSlideProps {
  * crossfade + directional slide-in built on react-native-reanimated.
  * Mount a fresh key whenever the active slide changes to trigger the animation.
  *
+ * Changes (DESIGN-BRIEF-MOBILE-V2 §5.1):
+ *  - Per-slide radial glow rendered behind the illustration/icon.
+ *  - OnboardingIcon rendered at SVG_ICON_SIZE (200px) instead of 72px —
+ *    fills the spec's 280×280 illustration zone.
+ *
  * @example
  * ```tsx
  * <OnboardingSlide
@@ -104,19 +124,38 @@ export function OnboardingSlide({
   }));
 
   const imgSize = screenWidth * imageScale;
+  const glow = SLIDE_GLOW[slide.index];
 
   return (
     <Animated.View
       style={[styles.slide, animatedStyle]}
       testID={`onboarding-slide-${slide.index}`}
     >
-      {/* Prefer SVG brand icon when `icon` prop is set; fall back to PNG asset */}
+      {/* Illustration / icon container with per-slide radial glow — spec §5.1–5.4 */}
       <View
         style={[styles.imageWrap, { width: imgSize, height: imgSize }]}
         testID={`onboarding-slide-image-${slide.index}`}
       >
+        {/* Radial glow — positioned absolutely behind the icon/image */}
+        <View
+          pointerEvents="none"
+          style={[
+            styles.glow,
+            {
+              width: glow.size,
+              height: glow.size,
+              borderRadius: glow.size / 2,
+              backgroundColor: glow.color,
+              // Center the glow circle relative to imgSize
+              top: (imgSize - glow.size) / 2,
+              left: (imgSize - glow.size) / 2,
+            },
+          ]}
+        />
+
+        {/* Prefer SVG brand icon at spec-target size; fall back to PNG asset */}
         {slide.icon ? (
-          <OnboardingIcon type={slide.icon} size={72} />
+          <OnboardingIcon type={slide.icon} size={SVG_ICON_SIZE} />
         ) : (
           <Image
             source={SLIDE_IMAGES[slide.index]}
@@ -146,6 +185,9 @@ const styles = StyleSheet.create({
     marginBottom: 28,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  glow: {
+    position: 'absolute',
   },
   title: {
     fontFamily: fonts.display,

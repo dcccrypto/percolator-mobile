@@ -11,10 +11,18 @@ module.exports = {
       },
     ],
   },
+  // pnpm stores packages under node_modules/.pnpm/<pkg@ver>/node_modules/<pkg>/
+  // so the pattern must match both flat (npm/yarn) and nested (pnpm) layouts.
   transformIgnorePatterns: [
-    'node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|@solana-mobile/.*|@solana/.*|@supabase/.*|nativewind|zustand)',
+    'node_modules/(?!(.pnpm/[^/]+/node_modules/)?((jest-)?react-native|@react-native(-community)?|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|@solana-mobile/.*|@solana/.*|@supabase/.*|nativewind|zustand))',
   ],
-  setupFiles: ['./jest.setup.js'],
+  // pnpm resolves react-test-renderer transitively to a patch version that
+  // doesn't match react exactly (e.g. 19.2.4 vs 19.1.0). RNTL's peer-dep
+  // check throws on any mismatch; skip it since the actual render path works.
+  testEnvironmentOptions: {
+    // Note: env vars for setupFiles must be set before module load.
+  },
+  setupFiles: ['<rootDir>/jest.env.js', './jest.setup.js'],
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx'],
   testPathIgnorePatterns: ['/node_modules/', '/android/', '/ios/'],
   // Run serially to prevent Zustand store pollution between test suites

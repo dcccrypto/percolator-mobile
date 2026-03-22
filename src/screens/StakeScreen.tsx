@@ -8,12 +8,14 @@ import {
   TextInput,
   RefreshControl,
   ActivityIndicator,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, radii } from '../theme/tokens';
 import { fonts } from '../theme/fonts';
 import { Panel } from '../components/ui/Panel';
 import { api, type StakePool } from '../lib/api';
+import { useStake } from '../hooks/useStake';
 
 /* ── Helpers ─────────────────────────────────────────────────────── */
 
@@ -41,7 +43,8 @@ const PoolCard = memo(function PoolCard({ pool }: { pool: StakePool }) {
   const [expanded, setExpanded] = useState(false);
   const [mode, setMode] = useState<'stake' | 'unstake'>('stake');
   const [amount, setAmount] = useState('');
-  const [confirming, setConfirming] = useState(false);
+  const [txSig, setTxSig] = useState<string | null>(null);
+  const { submitting, error: stakeError, stakeDeposit, stakeWithdraw } = useStake();
 
   const capPct = pool.capMax > 0 ? Math.min(pool.capUsed / pool.capMax, 1) : 0;
   const capFillColor =
@@ -49,15 +52,37 @@ const PoolCard = memo(function PoolCard({ pool }: { pool: StakePool }) {
     capPct < 0.8 ? colors.warning :
     colors.short;
 
+  // Convert USD input → base units (assume 6-decimal USDC unless pool specifies otherwise)
+  const DECIMALS = 6;
+
   const handleConfirm = useCallback(async () => {
-    if (!amount || parseFloat(amount) <= 0) return;
-    setConfirming(true);
-    // Placeholder — actual on-chain tx via MWA would go here
-    await new Promise((r) => setTimeout(r, 1500));
-    setConfirming(false);
-    setAmount('');
-    setExpanded(false);
-  }, [amount]);
+    const parsed = parseFloat(amount);
+    if (!parsed || parsed <= 0 || !pool.slabAddress || !pool.collateralMint) return;
+
+    setTxSig(null);
+    const amountBaseUnits = BigInt(Math.round(parsed * 10 ** DECIMALS));
+
+    let result;
+    if (mode === 'stake') {
+      result = await stakeDeposit({
+        slabAddress: pool.slabAddress,
+        collateralMint: pool.collateralMint,
+        amountBaseUnits,
+      });
+    } else {
+      result = await stakeWithdraw({
+        slabAddress: pool.slabAddress,
+        collateralMint: pool.collateralMint,
+        lpAmountBaseUnits: amountBaseUnits,
+      });
+    }
+
+    if (result?.signature) {
+      setTxSig(result.signature);
+      setAmount('');
+      setExpanded(false);
+    }
+  }, [amount, mode, pool.slabAddress, pool.collateralMint, stakeDeposit, stakeWithdraw]);
 
   return (
     <Panel style={styles.card}>
@@ -188,15 +213,22 @@ const PoolCard = memo(function PoolCard({ pool }: { pool: StakePool }) {
             ))}
           </View>
 
+          {/* Error message */}
+          {stakeError != null && (
+            <View style={styles.errorBox}>
+              <Text style={styles.errorText} numberOfLines={3}>{stakeError}</Text>
+            </View>
+          )}
+
           {/* Confirm + Cancel */}
           <View style={styles.confirmRow}>
             <TouchableOpacity
               style={[styles.confirmBtn, mode === 'unstake' && styles.confirmBtnUnstake]}
               onPress={handleConfirm}
               activeOpacity={0.7}
-              disabled={confirming}
+              disabled={submitting}
             >
-              {confirming ? (
+              {submitting ? (
                 <ActivityIndicator size="small" color="#000" />
               ) : (
                 <Text style={styles.confirmBtnText}>
@@ -216,6 +248,20 @@ const PoolCard = memo(function PoolCard({ pool }: { pool: StakePool }) {
             </TouchableOpacity>
           </View>
         </View>
+      )}
+
+      {/* Success toast */}
+      {txSig != null && (
+        <TouchableOpacity
+          style={styles.successBox}
+          activeOpacity={0.8}
+          onPress={() =>
+            Linking.openURL(`https://solscan.io/tx/${txSig}`)
+          }
+        >
+          <Text style={styles.successText}>✓ Transaction confirmed</Text>
+          <Text style={styles.successSig} numberOfLines={1}>{txSig.slice(0, 20)}…</Text>
+        </TouchableOpacity>
       )}
     </Panel>
   );
@@ -661,5 +707,42 @@ const styles = StyleSheet.create({
     fontFamily: fonts.body,
     fontSize: 14,
     color: colors.textMuted,
+  },
+
+  /* Error box */
+  errorBox: {
+    backgroundColor: colors.shortSubtle ?? '#2a1a1a',
+    borderWidth: 1,
+    borderColor: colors.short,
+    borderRadius: radii.md,
+    padding: 10,
+  },
+  errorText: {
+    fontFamily: fonts.body,
+    fontSize: 12,
+    color: colors.short,
+    lineHeight: 16,
+  },
+
+  /* Success box */
+  successBox: {
+    backgroundColor: colors.longSubtle ?? '#1a2a1a',
+    borderWidth: 1,
+    borderColor: colors.long,
+    borderRadius: radii.md,
+    padding: 10,
+    marginTop: 4,
+  },
+  successText: {
+    fontFamily: fonts.display,
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.long,
+  },
+  successSig: {
+    fontFamily: fonts.mono,
+    fontSize: 11,
+    color: colors.textMuted,
+    marginTop: 2,
   },
 });

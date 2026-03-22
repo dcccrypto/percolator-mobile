@@ -178,6 +178,10 @@ export interface StakePool {
   id: string;
   name: string;
   market: string;
+  /** Slab (market) on-chain address */
+  slabAddress: string;
+  /** Collateral mint for this pool */
+  collateralMint: string;
   tvl: number;
   apr: number | null;
   capUsed: number;
@@ -315,7 +319,15 @@ export const api = {
   async getStakePools(): Promise<StakePool[]> {
     const data = await fetchJSON<{ pools: any[] }>(`${WEB_API_BASE}/stake/pools`);
     return (data.pools ?? []).map((p) => ({
-      ...p,
+      id: p.poolAddress ?? p.id ?? p.slabAddress,
+      name: p.name ?? `Pool ${(p.slabAddress ?? '').slice(0, 8)}`,
+      market: p.symbol ?? p.name ?? '',
+      slabAddress: p.slabAddress ?? '',
+      collateralMint: p.collateralMint ?? '',
+      tvl: p.tvl ?? 0,
+      apr: p.apr ?? null,
+      capUsed: p.capUsed ?? 0,
+      capMax: p.capTotal ?? p.capMax ?? 0,
       cooldownSeconds: p.cooldownSeconds ?? Math.round((p.cooldownSlots ?? 0) * 0.4),
     }));
   },

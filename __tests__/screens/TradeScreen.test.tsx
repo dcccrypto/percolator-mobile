@@ -87,4 +87,10 @@ describe('TradeScreen', () => {
     const { getByText } = render(<TradeScreen />);
     expect(getByText(/Connect Wallet|Connect your wallet/i)).toBeTruthy();
   });
+
+  it('shows Entry (max) row in order summary', () => {
+    const { getByText } = render(<TradeScreen />);
+    // Entry (max) shows worst-case slippage-adjusted price — closes #138
+    expect(getByText('Entry (max)')).toBeTruthy();
+  });
 });

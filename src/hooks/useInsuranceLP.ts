@@ -37,6 +37,20 @@ import {
 const IX_DEPOSIT_INSURANCE_LP = 25;
 const IX_WITHDRAW_INSURANCE_LP = 26;
 
+// ── Protocol constraints ─────────────────────────────────────────────────────
+/**
+ * Known trusted Percolator program IDs (devnet + mainnet-beta).
+ * Parsed programId from slab config is validated against this set before any
+ * PDA derivation or instruction building (slab owner spoofing defence).
+ */
+const TRUSTED_PROGRAM_IDS: ReadonlySet<string> = new Set([
+  'GM8zjJ8LTBMv9xEsverh6H6wLyevgMHEJXcEzyY3rY24', // devnet v0
+  'PCKRHBmNXjTLV7RCM8JCBiJGveKptb6NKZcV7Xhf5wW',  // mainnet-beta (reserved)
+]);
+
+/** Maximum amount accepted in base units (u64 max = 2^64-1, but cap at 10^15 to guard overflow). */
+const MAX_AMOUNT_BASE_UNITS = BigInt('1000000000000000'); // 10^15
+
 // ── SPL constants ───────────────────────────────────────────────────────────
 const TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
 const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
@@ -62,6 +76,32 @@ function concat(...arrays: Uint8Array[]): Uint8Array {
     off += a.length;
   }
   return out;
+}
+
+// ── Security validation ───────────────────────────────────────────────────────
+
+/**
+ * Validate that the programId parsed from the slab config belongs to the
+ * known Percolator program set. Throws if the owner/program is not trusted,
+ * preventing PDAs/instructions from being derived from a spoofed account.
+ */
+function assertTrustedProgram(programId: PublicKey): void {
+  if (!TRUSTED_PROGRAM_IDS.has(programId.toBase58())) {
+    throw new Error(`Untrusted program: ${programId.toBase58()}`);
+  }
+}
+
+/**
+ * Validate that an amount is finite, positive, and within the safe u64 range.
+ * Guards BigInt overflow in encU64LE.
+ */
+function assertSafeAmount(amount: bigint, label: string): void {
+  if (amount <= BigInt(0)) {
+    throw new Error(`${label} must be > 0`);
+  }
+  if (amount > MAX_AMOUNT_BASE_UNITS) {
+    throw new Error(`${label} exceeds maximum (${MAX_AMOUNT_BASE_UNITS})`);
+  }
 }
 
 // ── Account meta helpers ─────────────────────────────────────────────────────
@@ -258,6 +298,12 @@ export function useInsuranceLP(): UseInsuranceLPResult {
         if (!layout) throw new Error('Unrecognised slab layout');
         const config = parseSlabConfig(rawData, layout);
 
+        // Validate slab owner against known program IDs (spoofing defence)
+        assertTrustedProgram(config.programId);
+
+        // Validate amount — guards u64 overflow in encU64LE
+        assertSafeAmount(params.amountBaseUnits, 'Deposit amount');
+
         // 2. Derive PDAs
         const lpMint = deriveInsuranceLpMint(config.programId, slabPk);
         const vaultAuth = deriveVaultAuthority(config.programId, slabPk);
@@ -333,6 +379,12 @@ export function useInsuranceLP(): UseInsuranceLPResult {
         if (!layout) throw new Error('Unrecognised slab layout');
         const config = parseSlabConfig(rawData, layout);
 
+        // Validate slab owner against known program IDs (spoofing defence)
+        assertTrustedProgram(config.programId);
+
+        // Validate LP amount — guards u64 overflow in encU64LE
+        assertSafeAmount(params.lpAmountBaseUnits, 'Withdraw amount');
+
         // 2. Derive PDAs
         const lpMint = deriveInsuranceLpMint(config.programId, slabPk);
         const vaultAuth = deriveVaultAuthority(config.programId, slabPk);
@@ -346,7 +398,25 @@ export function useInsuranceLP(): UseInsuranceLPResult {
         tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 150_000 }));
         tx.add(ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 5000 }));
 
-        // Build withdraw instruction (LP ATA must exist — user must have LP tokens)
+        // Preflight: ensure collateral ATA exists (idempotent create) and LP ATA exists.
+        // LP ATA must exist for a valid withdraw (user must hold LP tokens).
+        const [collateralAtaInfo, lpAtaInfo] = await Promise.all([
+          connection.getAccountInfo(userCollateralAta),
+          connection.getAccountInfo(userLpAta),
+        ]);
+
+        if (!collateralAtaInfo) {
+          tx.add(buildCreateATAIx(publicKey, userCollateralAta, publicKey, config.collateralMint));
+        }
+
+        if (!lpAtaInfo) {
+          throw new Error(
+            `LP token account not found for mint ${lpMint.toBase58().slice(0, 8)}…` +
+            ` — deposit first to receive LP tokens`,
+          );
+        }
+
+        // Build withdraw instruction
         tx.add(buildWithdrawInsuranceLPIx(
           config.programId,
           publicKey,

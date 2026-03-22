@@ -106,7 +106,9 @@ const VaultCard = memo(function VaultCard({ vault }: { vault: VaultInfo }) {
 
     // Convert USD dollar amount to base token units.
     // Insurance vaults use the market's collateral token (typically USDC, 6 decimals).
-    const baseUnits = BigInt(Math.round(amountNum * 10 ** vault.decimals));
+    // Guard against undefined/null decimals from poorly-hydrated API responses (issue #128).
+    const decimals = vault.decimals ?? 6;
+    const baseUnits = BigInt(Math.round(amountNum * 10 ** decimals));
 
     const action = mode === 'deposit' ? 'Deposit' : 'Withdraw';
     Alert.alert(

@@ -57,7 +57,7 @@ const PoolCard = memo(function PoolCard({ pool }: { pool: StakePool }) {
 
   const handleConfirm = useCallback(async () => {
     const parsed = parseFloat(amount);
-    if (!parsed || parsed <= 0 || !pool.slabAddress || !pool.collateralMint) return;
+    if (!parsed || !isFinite(parsed) || parsed <= 0 || !pool.slabAddress || !pool.collateralMint) return;
 
     setTxSig(null);
     const amountBaseUnits = BigInt(Math.round(parsed * 10 ** DECIMALS));

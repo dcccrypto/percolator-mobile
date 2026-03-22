@@ -317,11 +317,9 @@ export function TradeScreen() {
           <StatCell
             label="Volume"
             value={
-              (currentMarket as any)?.volume24h != null
-                ? formatLarge((currentMarket as any).volume24h)
-                : currentMarket?.totalOpenInterest != null
-                  ? formatLarge((currentMarket.totalOpenInterest ?? 0) * 0.3) // proxy
-                  : '—'
+              currentMarket?.volume24h != null
+                ? formatLarge(currentMarket.volume24h)
+                : '—'
             }
           />
           <StatCell
@@ -495,7 +493,7 @@ export function TradeScreen() {
           {trades.slice(0, 10).map((t, i) => (
             <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 2 }}>
               <Text style={{ fontFamily: fonts.mono, fontSize: 11, color: t.side === 'long' ? colors.long : colors.short }}>
-                {t.side === 'long' ? '●' : '●'} ${t.price?.toFixed(2) ?? '—'}
+                {t.side === 'long' ? '▲' : '▼'} ${t.price?.toFixed(2) ?? '—'}
               </Text>
               <Text style={{ fontFamily: fonts.mono, fontSize: 11, color: colors.textMuted }}>
                 {t.size?.toFixed(4) ?? '—'}

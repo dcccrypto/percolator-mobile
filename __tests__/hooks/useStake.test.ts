@@ -25,6 +25,9 @@ const mockGetLatestBlockhash = jest.fn(() =>
     lastValidBlockHeight: 100,
   }),
 );
+const mockConfirmTransaction = jest.fn(() =>
+  Promise.resolve({ value: { err: null } }),
+);
 jest.mock('../../src/lib/solana', () => ({
   connection: {
     getAccountInfo: (...args: any[]) =>
@@ -32,6 +35,9 @@ jest.mock('../../src/lib/solana', () => ({
     getLatestBlockhash: (...args: any[]) =>
       (global as any).__mockGetLatestBlockhash?.(...args) ??
       Promise.resolve({ blockhash: 'test', lastValidBlockHeight: 100 }),
+    confirmTransaction: (...args: any[]) =>
+      (global as any).__mockConfirmTransaction?.(...args) ??
+      Promise.resolve({ value: { err: null } }),
   },
 }));
 
@@ -96,11 +102,13 @@ describe('useStake', () => {
     jest.clearAllMocks();
     (global as any).__mockGetAccountInfo = mockGetAccountInfo;
     (global as any).__mockGetLatestBlockhash = mockGetLatestBlockhash;
+    (global as any).__mockConfirmTransaction = mockConfirmTransaction;
     mockGetAccountInfo.mockResolvedValue(null);
     mockGetLatestBlockhash.mockResolvedValue({
       blockhash: 'GHtXQBsoZHVnNFa9YevAzFr17DJjgHXk3ycTKD5xD3Zi',
       lastValidBlockHeight: 100,
     });
+    mockConfirmTransaction.mockResolvedValue({ value: { err: null } });
   });
 
   afterEach(() => {

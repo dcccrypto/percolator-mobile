@@ -57,7 +57,7 @@ const PoolCard = memo(function PoolCard({ pool }: { pool: StakePool }) {
 
   const handleConfirm = useCallback(async () => {
     const parsed = parseFloat(amount);
-    if (!parsed || !isFinite(parsed) || parsed <= 0 || !pool.slabAddress || !pool.collateralMint) return;
+    if (!isFinite(parsed) || !parsed || parsed <= 0 || !pool.slabAddress || !pool.collateralMint) return;
 
     setTxSig(null);
     const amountBaseUnits = BigInt(Math.round(parsed * 10 ** DECIMALS));
@@ -226,7 +226,13 @@ const PoolCard = memo(function PoolCard({ pool }: { pool: StakePool }) {
               style={[styles.confirmBtn, mode === 'unstake' && styles.confirmBtnUnstake]}
               onPress={handleConfirm}
               activeOpacity={0.7}
-              disabled={submitting}
+              disabled={
+                submitting ||
+                !isFinite(parseFloat(amount)) ||
+                parseFloat(amount) <= 0 ||
+                !pool.slabAddress ||
+                !pool.collateralMint
+              }
             >
               {submitting ? (
                 <ActivityIndicator size="small" color="#000" />

@@ -346,7 +346,7 @@ export function useStake(): UseStakeResult {
         const userLpAta = deriveATA(publicKey, lpMint);
 
         // Build tx
-        const { blockhash } = await connection.getLatestBlockhash('confirmed');
+        const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
         const tx = new Transaction({ recentBlockhash: blockhash, feePayer: publicKey });
 
         tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 250_000 }));
@@ -378,7 +378,20 @@ export function useStake(): UseStakeResult {
 
         const serialized = tx.serialize({ requireAllSignatures: false, verifySignatures: false });
         const results = await signAndSend([new Uint8Array(serialized)]);
-        return { signature: results.signatures[0] };
+        const signature = results.signatures[0];
+
+        // Wait for on-chain finality before reporting success
+        const confirmation = await connection.confirmTransaction(
+          { signature, blockhash, lastValidBlockHeight },
+          'confirmed',
+        );
+        if (confirmation.value.err) {
+          throw new Error(
+            `Transaction failed on-chain: ${JSON.stringify(confirmation.value.err)}`,
+          );
+        }
+
+        return { signature };
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Stake deposit failed';
         setError(msg);
@@ -431,7 +444,7 @@ export function useStake(): UseStakeResult {
         }
 
         // Build tx
-        const { blockhash } = await connection.getLatestBlockhash('confirmed');
+        const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
         const tx = new Transaction({ recentBlockhash: blockhash, feePayer: publicKey });
 
         tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 200_000 }));
@@ -457,7 +470,20 @@ export function useStake(): UseStakeResult {
 
         const serialized = tx.serialize({ requireAllSignatures: false, verifySignatures: false });
         const results = await signAndSend([new Uint8Array(serialized)]);
-        return { signature: results.signatures[0] };
+        const signature = results.signatures[0];
+
+        // Wait for on-chain finality before reporting success
+        const confirmation = await connection.confirmTransaction(
+          { signature, blockhash, lastValidBlockHeight },
+          'confirmed',
+        );
+        if (confirmation.value.err) {
+          throw new Error(
+            `Transaction failed on-chain: ${JSON.stringify(confirmation.value.err)}`,
+          );
+        }
+
+        return { signature };
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Stake withdrawal failed';
         setError(msg);

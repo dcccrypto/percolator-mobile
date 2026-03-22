@@ -37,6 +37,12 @@ const mockUseMarkets = jest.fn(() => ({
       tradingFeeBps: 5,
       status: 'active',
       logoUrl: null,
+      volume24h: 4200000,
+      isZombie: false,
+      decimals: 6,
+      fundingRate: null,
+      markPrice: null,
+      createdAt: '2024-01-01T00:00:00Z',
     },
     {
       slabAddress: 'slab2',
@@ -50,6 +56,12 @@ const mockUseMarkets = jest.fn(() => ({
       tradingFeeBps: 10,
       status: 'active',
       logoUrl: null,
+      volume24h: 18500000,
+      isZombie: false,
+      decimals: 6,
+      fundingRate: null,
+      markPrice: null,
+      createdAt: '2025-06-15T00:00:00Z',
     },
   ],
   loading: false,
@@ -183,5 +195,72 @@ describe('MarketsScreen', () => {
       'Trade',
       expect.objectContaining({ direction: 'short' }),
     );
+  });
+
+  it('Newest filter sorts market with most recent createdAt first', () => {
+    // BTC-PERP has createdAt 2025-06-15, SOL-PERP has 2024-01-01
+    // After Newest sort, BTC-PERP should appear before SOL-PERP
+    const { getAllByText, getByText } = render(<MarketsScreen />);
+    fireEvent.press(getByText('Newest'));
+    const symbols = getAllByText(/-PERP/);
+    // BTC-PERP (newer) should come first
+    expect(symbols[0].props.children).toBe('BTC-PERP');
+    expect(symbols[1].props.children).toBe('SOL-PERP');
+  });
+
+  it('Newest filter places markets with null createdAt at the bottom', () => {
+    const nullCreatedAtMarkets = [
+      {
+        slabAddress: 'slab3',
+        symbol: 'ETH-PERP',
+        name: 'Ethereum Perpetual',
+        lastPrice: 3000,
+        change24h: 1.0,
+        totalOpenInterest: 1000000,
+        maxLeverage: 20,
+        tradingFeeBps: 5,
+        status: 'active',
+        logoUrl: null,
+        volume24h: null,
+        isZombie: false,
+        decimals: 6,
+        fundingRate: null,
+        markPrice: null,
+        mintAddress: '',
+        createdAt: '2025-01-01T00:00:00Z',
+      },
+      {
+        slabAddress: 'slab4',
+        symbol: 'DOGE-PERP',
+        name: 'Doge Perpetual',
+        lastPrice: 0.1,
+        change24h: 0,
+        totalOpenInterest: null,
+        maxLeverage: 5,
+        tradingFeeBps: 5,
+        status: 'active',
+        logoUrl: null,
+        volume24h: null,
+        isZombie: false,
+        decimals: 6,
+        fundingRate: null,
+        markPrice: null,
+        mintAddress: '',
+        createdAt: null, // null — should sink to bottom
+      },
+    ];
+    mockUseMarkets.mockReturnValue({
+      markets: nullCreatedAtMarkets,
+      loading: false,
+      error: null,
+      refetch: mockRefetch,
+    });
+    const { getAllByText, getByText } = render(<MarketsScreen />);
+    fireEvent.press(getByText('Newest'));
+    const symbols = getAllByText(/-PERP/);
+    expect(symbols[0].props.children).toBe('ETH-PERP');
+    expect(symbols[1].props.children).toBe('DOGE-PERP');
+    // Reset to default mock for subsequent tests
+    mockUseMarkets.mockReset();
   });
 });

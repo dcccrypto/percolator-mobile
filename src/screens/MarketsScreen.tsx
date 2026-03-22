@@ -126,8 +126,6 @@ const TokenLogo = memo(function TokenLogo({
   );
 });
 
-// Fixed card height for getItemLayout (card ~184px + 8px gap)
-const CARD_HEIGHT = 192;
 
 /**
  * Market card — design brief §3.2.
@@ -374,11 +372,6 @@ export function MarketsScreen() {
           keyExtractor={(item) => item.slabAddress}
           contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}
-          getItemLayout={(_data, index) => ({
-            length: CARD_HEIGHT,
-            offset: CARD_HEIGHT * index + 16, // 16px list padding
-            index,
-          })}
           initialNumToRender={8}
           maxToRenderPerBatch={10}
           windowSize={5}

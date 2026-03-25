@@ -85,10 +85,8 @@ export function usePriceStream(slabAddresses: string[]) {
 
   const connect = useCallback(() => {
     if (slabsRef.current.length === 0) return;
-    if (!WS_URL) {
-      setStatus('error');
-      return;
-    }
+    // WS_URL is validated at module init by buildWsUrl() — if missing, module load throws.
+    // No runtime falsy check needed here.
 
     setStatus('connecting');
     const ws = new WebSocket(WS_URL);

@@ -17,6 +17,8 @@ import {
 import { connection } from '../lib/solana';
 import { useMWA } from './useMWA';
 import { usePositionStore } from '../store/positionStore';
+import { assertTrustedProgram } from '../lib/trustedPrograms';
+import { confirmTransactionSafe } from '../lib/confirmTransaction';
 
 // ---------------------------------------------------------------------------
 // Instruction tag constants
@@ -85,29 +87,8 @@ const PYTH_PUSH_ORACLE_PROGRAM_ID = new PublicKey(
 );
 
 // ---------------------------------------------------------------------------
-// Security validation
+// Security validation — assertTrustedProgram imported from ../lib/trustedPrograms
 // ---------------------------------------------------------------------------
-
-/**
- * Known trusted Percolator program IDs (devnet + mainnet-beta).
- * Parsed programId from slab config is validated against this set before any
- * PDA derivation or instruction building (slab owner spoofing defence).
- */
-const TRUSTED_PROGRAM_IDS: ReadonlySet<string> = new Set([
-  'GM8zjJ8LTBMv9xEsverh6H6wLyevgMHEJXcEzyY3rY24', // devnet v0
-  'PCKRHBmNXjTLV7RCM8JCBiJGveKptb6NKZcV7Xhf5wW',  // mainnet-beta (reserved)
-]);
-
-/**
- * Validate that the programId parsed from the slab config belongs to the
- * known Percolator program set. Throws if the owner/program is not trusted,
- * preventing PDAs/instructions from being derived from a spoofed account.
- */
-function assertTrustedProgram(programId: PublicKey): void {
-  if (!TRUSTED_PROGRAM_IDS.has(programId.toBase58())) {
-    throw new Error(`Untrusted program: ${programId.toBase58()}`);
-  }
-}
 
 interface SlabConfig {
   programId: PublicKey;
@@ -335,23 +316,7 @@ export function useCollateral(): UseCollateralResult {
         const results = await signAndSend([new Uint8Array(serialized)]);
         const sig = results.signatures[0];
 
-        // Confirm with blockhash context form (replaces deprecated string-commitment overload).
-        // Validates against the specific blockhash window and checks confirmation.value.err
-        // so dropped/replaced transactions don't silently succeed.
-        try {
-          const confirmation = await connection.confirmTransaction(
-            { signature: sig, blockhash, lastValidBlockHeight },
-            'confirmed',
-          );
-          if (confirmation.value.err) {
-            throw new Error(`Transaction failed on-chain: ${JSON.stringify(confirmation.value.err)}`);
-          }
-        } catch (confirmErr) {
-          // Re-throw on-chain errors; swallow timeout/polling errors (sig still valid)
-          if (confirmErr instanceof Error && confirmErr.message.startsWith('Transaction failed on-chain')) {
-            throw confirmErr;
-          }
-        }
+        await confirmTransactionSafe(connection, sig, blockhash, lastValidBlockHeight);
         triggerRefresh();
 
         return { signature: sig };
@@ -422,23 +387,7 @@ export function useCollateral(): UseCollateralResult {
         const results = await signAndSend([new Uint8Array(serialized)]);
         const sig = results.signatures[0];
 
-        // Confirm with blockhash context form (replaces deprecated string-commitment overload).
-        // Validates against the specific blockhash window and checks confirmation.value.err
-        // so dropped/replaced transactions don't silently succeed.
-        try {
-          const confirmation = await connection.confirmTransaction(
-            { signature: sig, blockhash, lastValidBlockHeight },
-            'confirmed',
-          );
-          if (confirmation.value.err) {
-            throw new Error(`Transaction failed on-chain: ${JSON.stringify(confirmation.value.err)}`);
-          }
-        } catch (confirmErr) {
-          // Re-throw on-chain errors; swallow timeout/polling errors (sig still valid)
-          if (confirmErr instanceof Error && confirmErr.message.startsWith('Transaction failed on-chain')) {
-            throw confirmErr;
-          }
-        }
+        await confirmTransactionSafe(connection, sig, blockhash, lastValidBlockHeight);
         triggerRefresh();
 
         return { signature: sig };

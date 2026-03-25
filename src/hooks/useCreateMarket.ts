@@ -13,10 +13,51 @@ import { useState, useCallback } from 'react';
 import { Alert } from 'react-native';
 import { useMWA } from './useMWA';
 import { connection } from '../lib/solana';
-import { Transaction } from '@solana/web3.js';
+import { PublicKey, Transaction } from '@solana/web3.js';
 
 const WEB_API_BASE =
   process.env.EXPO_PUBLIC_WEB_URL ?? 'https://percolatorlaunch.com/api';
+
+// ---------------------------------------------------------------------------
+// Security: program allowlist
+// ---------------------------------------------------------------------------
+
+/**
+ * Known trusted program IDs that are permitted to appear in server-built
+ * market-deployment transactions.  Any instruction targeting a program outside
+ * this set causes the entire deployment to be aborted before MWA signing.
+ *
+ * Covers: Percolator program (devnet/mainnet), SPL Token, ATA, System, ComputeBudget.
+ */
+const ALLOWED_PROGRAM_IDS: ReadonlySet<string> = new Set([
+  // Percolator programs
+  'GM8zjJ8LTBMv9xEsverh6H6wLyevgMHEJXcEzyY3rY24', // devnet v0
+  'PCKRHBmNXjTLV7RCM8JCBiJGveKptb6NKZcV7Xhf5wW',  // mainnet-beta (reserved)
+  // Solana system programs
+  '11111111111111111111111111111111',                // System Program
+  'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA',   // SPL Token
+  'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL',  // ATA Program
+  'ComputeBudget111111111111111111111111111111',     // Compute Budget
+  'SysvarC1ock11111111111111111111111111111111',     // Clock sysvar (legacy)
+]);
+
+/**
+ * Validate all instructions in a server-supplied transaction against the
+ * program allowlist. Throws with the offending program ID if any instruction
+ * targets an unknown program — preventing a malicious server from redirecting
+ * the user's signature to an arbitrary program.
+ */
+function assertTrustedPrograms(tx: Transaction, txIndex: number): void {
+  for (const ix of tx.instructions) {
+    const pid = ix.programId.toBase58();
+    if (!ALLOWED_PROGRAM_IDS.has(pid)) {
+      throw new Error(
+        `TX${txIndex + 1} contains instruction targeting untrusted program: ${pid}. ` +
+        'Deployment aborted — do not sign.',
+      );
+    }
+  }
+}
 
 export type SlabTier = 'small' | 'medium' | 'large';
 export type OracleMode = 'admin' | 'hyperp' | 'pyth';
@@ -141,11 +182,21 @@ export function useCreateMarket() {
           return bytes;
         });
 
-        // ── Step 1: Simulate each transaction before signing ──────────────────
-        setState((s) => ({ ...s, step: 'Simulating transactions…', stepIndex: 1 }));
+        // ── Step 1: Validate + simulate each transaction before signing ─────────
+        // Security: assert every instruction targets a known trusted program BEFORE
+        // we touch MWA. A malicious server response cannot redirect the user's
+        // signature to an arbitrary program (e.g. drain wallet).
+        setState((s) => ({ ...s, step: 'Validating transactions…', stepIndex: 1 }));
+        const decodedTxs: Transaction[] = [];
         for (let i = 0; i < txBytes.length; i++) {
           const tx = Transaction.from(txBytes[i]);
-          const sim = await connection.simulateTransaction(tx);
+          assertTrustedPrograms(tx, i);
+          decodedTxs.push(tx);
+        }
+
+        setState((s) => ({ ...s, step: 'Simulating transactions…', stepIndex: 1 }));
+        for (let i = 0; i < decodedTxs.length; i++) {
+          const sim = await connection.simulateTransaction(decodedTxs[i]);
           if (sim.value.err) {
             const logs = sim.value.logs?.join('\n') ?? '';
             throw new Error(

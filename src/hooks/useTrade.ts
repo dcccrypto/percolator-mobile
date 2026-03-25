@@ -22,6 +22,8 @@ import {
 } from '@solana/web3.js';
 import { connection } from '../lib/solana';
 import { useMWA } from './useMWA';
+import { assertTrustedProgram } from '../lib/trustedPrograms';
+import { confirmTransactionSafe } from '../lib/confirmTransaction';
 
 // ---------------------------------------------------------------------------
 // Instruction tag constants (must match program/src/processor/mod.rs)
@@ -210,6 +212,10 @@ function meta(pubkey: PublicKey, isSigner: boolean, isWritable: boolean): Accoun
 const TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
 const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
 const SYSTEM_PROGRAM_ID = new PublicKey('11111111111111111111111111111111');
+
+// ---------------------------------------------------------------------------
+// Security validation — assertTrustedProgram imported from ../lib/trustedPrograms
+// ---------------------------------------------------------------------------
 
 /**
  * Derive associated token address (ATA) for a given owner and mint.
@@ -426,6 +432,10 @@ export function useTrade(): UseTradeResult {
         const layout = detectSlabLayout(data);
         if (!layout) throw new Error('Unrecognised slab layout — cannot parse market data');
         const config = parseSlabConfig(data, layout);
+
+        // Validate slab owner against known program IDs (slab spoofing defence)
+        assertTrustedProgram(config.programId);
+
         const lp = findFirstLP(data, layout);
         if (!lp) throw new Error('No LP account found — market has no liquidity');
 
@@ -482,7 +492,7 @@ export function useTrade(): UseTradeResult {
         const sizeE6 = params.direction === 'long' ? absE6 : -absE6;
 
         // 7. Build instructions
-        const { blockhash } = await connection.getLatestBlockhash('confirmed');
+        const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
         const tx = new Transaction({
           recentBlockhash: blockhash,
           feePayer: publicKey,
@@ -540,7 +550,11 @@ export function useTrade(): UseTradeResult {
         const results = await signAndSend([new Uint8Array(serialized)]);
 
         // MWA v2 returns { signatures: string[] }, not a plain array
-        return { signature: results.signatures[0] };
+        const sig = results.signatures[0];
+
+        await confirmTransactionSafe(connection, sig, blockhash, lastValidBlockHeight);
+
+        return { signature: sig };
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Transaction failed';
         setError(msg);

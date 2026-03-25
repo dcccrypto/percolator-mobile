@@ -17,6 +17,8 @@ import {
 import { connection } from '../lib/solana';
 import { useMWA } from './useMWA';
 import { usePositionStore } from '../store/positionStore';
+import { assertTrustedProgram } from '../lib/trustedPrograms';
+import { confirmTransactionSafe } from '../lib/confirmTransaction';
 
 // ---------------------------------------------------------------------------
 // Instruction tag constants
@@ -83,6 +85,10 @@ import {
 const PYTH_PUSH_ORACLE_PROGRAM_ID = new PublicKey(
   'pythWSnswVUd12oZpeFP8e9CVaEqJg25g1Vtc2biRsT',
 );
+
+// ---------------------------------------------------------------------------
+// Security validation — assertTrustedProgram imported from ../lib/trustedPrograms
+// ---------------------------------------------------------------------------
 
 interface SlabConfig {
   programId: PublicKey;
@@ -271,6 +277,9 @@ export function useCollateral(): UseCollateralResult {
         if (!layout) throw new Error('Unrecognised slab layout');
         const config = parseSlabConfig(data, layout);
 
+        // Validate slab owner against known program IDs (slab spoofing defence)
+        assertTrustedProgram(config.programId);
+
         const userAta = deriveATA(publicKey, config.collateralMint);
 
         // Check if user has an account on the slab
@@ -307,23 +316,7 @@ export function useCollateral(): UseCollateralResult {
         const results = await signAndSend([new Uint8Array(serialized)]);
         const sig = results.signatures[0];
 
-        // Confirm with blockhash context form (replaces deprecated string-commitment overload).
-        // Validates against the specific blockhash window and checks confirmation.value.err
-        // so dropped/replaced transactions don't silently succeed.
-        try {
-          const confirmation = await connection.confirmTransaction(
-            { signature: sig, blockhash, lastValidBlockHeight },
-            'confirmed',
-          );
-          if (confirmation.value.err) {
-            throw new Error(`Transaction failed on-chain: ${JSON.stringify(confirmation.value.err)}`);
-          }
-        } catch (confirmErr) {
-          // Re-throw on-chain errors; swallow timeout/polling errors (sig still valid)
-          if (confirmErr instanceof Error && confirmErr.message.startsWith('Transaction failed on-chain')) {
-            throw confirmErr;
-          }
-        }
+        await confirmTransactionSafe(connection, sig, blockhash, lastValidBlockHeight);
         triggerRefresh();
 
         return { signature: sig };
@@ -355,6 +348,9 @@ export function useCollateral(): UseCollateralResult {
         const layout = detectSlabLayout(data);
         if (!layout) throw new Error('Unrecognised slab layout');
         const config = parseSlabConfig(data, layout);
+
+        // Validate slab owner against known program IDs (slab spoofing defence)
+        assertTrustedProgram(config.programId);
 
         const userIdx = findUserIdx(data, publicKey, layout);
         if (userIdx < 0) throw new Error('No account found on this market — deposit first');
@@ -391,23 +387,7 @@ export function useCollateral(): UseCollateralResult {
         const results = await signAndSend([new Uint8Array(serialized)]);
         const sig = results.signatures[0];
 
-        // Confirm with blockhash context form (replaces deprecated string-commitment overload).
-        // Validates against the specific blockhash window and checks confirmation.value.err
-        // so dropped/replaced transactions don't silently succeed.
-        try {
-          const confirmation = await connection.confirmTransaction(
-            { signature: sig, blockhash, lastValidBlockHeight },
-            'confirmed',
-          );
-          if (confirmation.value.err) {
-            throw new Error(`Transaction failed on-chain: ${JSON.stringify(confirmation.value.err)}`);
-          }
-        } catch (confirmErr) {
-          // Re-throw on-chain errors; swallow timeout/polling errors (sig still valid)
-          if (confirmErr instanceof Error && confirmErr.message.startsWith('Transaction failed on-chain')) {
-            throw confirmErr;
-          }
-        }
+        await confirmTransactionSafe(connection, sig, blockhash, lastValidBlockHeight);
         triggerRefresh();
 
         return { signature: sig };

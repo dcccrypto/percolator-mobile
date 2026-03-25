@@ -84,6 +84,31 @@ const PYTH_PUSH_ORACLE_PROGRAM_ID = new PublicKey(
   'pythWSnswVUd12oZpeFP8e9CVaEqJg25g1Vtc2biRsT',
 );
 
+// ---------------------------------------------------------------------------
+// Security validation
+// ---------------------------------------------------------------------------
+
+/**
+ * Known trusted Percolator program IDs (devnet + mainnet-beta).
+ * Parsed programId from slab config is validated against this set before any
+ * PDA derivation or instruction building (slab owner spoofing defence).
+ */
+const TRUSTED_PROGRAM_IDS: ReadonlySet<string> = new Set([
+  'GM8zjJ8LTBMv9xEsverh6H6wLyevgMHEJXcEzyY3rY24', // devnet v0
+  'PCKRHBmNXjTLV7RCM8JCBiJGveKptb6NKZcV7Xhf5wW',  // mainnet-beta (reserved)
+]);
+
+/**
+ * Validate that the programId parsed from the slab config belongs to the
+ * known Percolator program set. Throws if the owner/program is not trusted,
+ * preventing PDAs/instructions from being derived from a spoofed account.
+ */
+function assertTrustedProgram(programId: PublicKey): void {
+  if (!TRUSTED_PROGRAM_IDS.has(programId.toBase58())) {
+    throw new Error(`Untrusted program: ${programId.toBase58()}`);
+  }
+}
+
 interface SlabConfig {
   programId: PublicKey;
   vault: PublicKey;
@@ -271,6 +296,9 @@ export function useCollateral(): UseCollateralResult {
         if (!layout) throw new Error('Unrecognised slab layout');
         const config = parseSlabConfig(data, layout);
 
+        // Validate slab owner against known program IDs (slab spoofing defence)
+        assertTrustedProgram(config.programId);
+
         const userAta = deriveATA(publicKey, config.collateralMint);
 
         // Check if user has an account on the slab
@@ -355,6 +383,9 @@ export function useCollateral(): UseCollateralResult {
         const layout = detectSlabLayout(data);
         if (!layout) throw new Error('Unrecognised slab layout');
         const config = parseSlabConfig(data, layout);
+
+        // Validate slab owner against known program IDs (slab spoofing defence)
+        assertTrustedProgram(config.programId);
 
         const userIdx = findUserIdx(data, publicKey, layout);
         if (userIdx < 0) throw new Error('No account found on this market — deposit first');

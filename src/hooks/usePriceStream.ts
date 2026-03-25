@@ -10,13 +10,16 @@ function buildWsUrl(): string {
   if (process.env.EXPO_PUBLIC_WS_URL) {
     return process.env.EXPO_PUBLIC_WS_URL;
   }
-  const apiKey = process.env.EXPO_PUBLIC_HELIUS_API_KEY ?? 'ecfc91c7-b704-4c37-b10e-a277392830aa';
+  const apiKey = process.env.EXPO_PUBLIC_HELIUS_API_KEY;
   if (!apiKey) {
-    console.warn(
+    // Hard error: a missing key should be caught at startup, not silently fail
+    // at runtime when the user tries to view prices. Set EXPO_PUBLIC_HELIUS_API_KEY
+    // in EAS Secrets (production) or .env.local (development).
+    throw new Error(
       '[usePriceStream] EXPO_PUBLIC_HELIUS_API_KEY is not set. ' +
-        'Price streaming will not work. Set it in your .env file.',
+        'Add it to EAS Secrets (production) or .env.local (development). ' +
+        'Never hardcode API keys in source.',
     );
-    return '';
   }
   return `wss://devnet.helius-rpc.com/?api-key=${apiKey}`;
 }

@@ -1,7 +1,8 @@
 /**
  * Tests for src/hooks/usePriceStream.ts
- * 
+ *
  * PERC-505: Updated for batched price updates (500ms flush interval).
+ * GH#146 (Security Finding #3): Updated for oracle cross-check / priceWarnings.
  * Uses real timers + waitFor to handle async batch flush.
  */
 import { renderHook, act, waitFor } from '@testing-library/react-native';
@@ -196,5 +197,135 @@ describe('usePriceStream', () => {
     // slab1 should have latest price (101), slab2 should be 200
     expect(result.current.prices['slab1'].price).toBe(101);
     expect(result.current.prices['slab2'].price).toBe(200);
+  });
+
+  // ── Security Finding #3 — GH#146: oracle cross-check ──────────────────────
+
+  it('returns empty priceWarnings when no oracle prices provided', async () => {
+    const { result } = renderHook(() => usePriceStream(['slab1']));
+    const ws = MockWebSocket.latest();
+
+    act(() => { ws.onopen!(); });
+    act(() => {
+      ws.onmessage!({ data: JSON.stringify({ type: 'price', slabAddress: 'slab1', price: 100 }) });
+    });
+
+    await waitFor(() => {
+      expect(result.current.prices['slab1']).toBeDefined();
+    }, { timeout: 2000 });
+
+    expect(result.current.priceWarnings.size).toBe(0);
+  });
+
+  it('adds no warning when WS price is within 2% of oracle price', async () => {
+    const oraclePrices = { slab1: 100 };
+    const { result } = renderHook(() => usePriceStream(['slab1'], oraclePrices));
+    const ws = MockWebSocket.latest();
+
+    act(() => { ws.onopen!(); });
+    act(() => {
+      // 1.5% deviation — under threshold
+      ws.onmessage!({ data: JSON.stringify({ type: 'price', slabAddress: 'slab1', price: 101.5 }) });
+    });
+
+    await waitFor(() => {
+      expect(result.current.prices['slab1']).toBeDefined();
+    }, { timeout: 2000 });
+
+    expect(result.current.priceWarnings.has('slab1')).toBe(false);
+  });
+
+  it('adds warning when WS price exceeds 2% oracle deviation (price up)', async () => {
+    const oraclePrices = { slab1: 100 };
+    const { result } = renderHook(() => usePriceStream(['slab1'], oraclePrices));
+    const ws = MockWebSocket.latest();
+
+    act(() => { ws.onopen!(); });
+    act(() => {
+      // 3% above oracle — over threshold
+      ws.onmessage!({ data: JSON.stringify({ type: 'price', slabAddress: 'slab1', price: 103 }) });
+    });
+
+    await waitFor(() => {
+      expect(result.current.priceWarnings.has('slab1')).toBe(true);
+    }, { timeout: 2000 });
+  });
+
+  it('adds warning when WS price exceeds 2% oracle deviation (price down)', async () => {
+    const oraclePrices = { slab1: 100 };
+    const { result } = renderHook(() => usePriceStream(['slab1'], oraclePrices));
+    const ws = MockWebSocket.latest();
+
+    act(() => { ws.onopen!(); });
+    act(() => {
+      // 5% below oracle — over threshold
+      ws.onmessage!({ data: JSON.stringify({ type: 'price', slabAddress: 'slab1', price: 95 }) });
+    });
+
+    await waitFor(() => {
+      expect(result.current.priceWarnings.has('slab1')).toBe(true);
+    }, { timeout: 2000 });
+  });
+
+  it('clears warning once WS price returns within threshold', async () => {
+    const oraclePrices = { slab1: 100 };
+    const { result } = renderHook(() => usePriceStream(['slab1'], oraclePrices));
+    const ws = MockWebSocket.latest();
+
+    act(() => { ws.onopen!(); });
+    // First: deviating price
+    act(() => {
+      ws.onmessage!({ data: JSON.stringify({ type: 'price', slabAddress: 'slab1', price: 105 }) });
+    });
+
+    await waitFor(() => {
+      expect(result.current.priceWarnings.has('slab1')).toBe(true);
+    }, { timeout: 2000 });
+
+    // Then: price returns within range
+    act(() => {
+      ws.onmessage!({ data: JSON.stringify({ type: 'price', slabAddress: 'slab1', price: 101 }) });
+    });
+
+    await waitFor(() => {
+      expect(result.current.priceWarnings.has('slab1')).toBe(false);
+    }, { timeout: 2000 });
+  });
+
+  it('only warns for deviating slabs, not all', async () => {
+    const oraclePrices = { slab1: 100, slab2: 200 };
+    const { result } = renderHook(() => usePriceStream(['slab1', 'slab2'], oraclePrices));
+    const ws = MockWebSocket.latest();
+
+    act(() => { ws.onopen!(); });
+    act(() => {
+      ws.onmessage!({ data: JSON.stringify({ type: 'price', slabAddress: 'slab1', price: 110 }) }); // 10% off
+      ws.onmessage!({ data: JSON.stringify({ type: 'price', slabAddress: 'slab2', price: 201 }) }); // 0.5% off
+    });
+
+    await waitFor(() => {
+      expect(result.current.prices['slab1']).toBeDefined();
+    }, { timeout: 2000 });
+
+    expect(result.current.priceWarnings.has('slab1')).toBe(true);
+    expect(result.current.priceWarnings.has('slab2')).toBe(false);
+  });
+
+  it('does not warn when slab has no oracle price in map', async () => {
+    // slab2 missing from oracle map — should not trigger warning
+    const oraclePrices = { slab1: 100 };
+    const { result } = renderHook(() => usePriceStream(['slab1', 'slab2'], oraclePrices));
+    const ws = MockWebSocket.latest();
+
+    act(() => { ws.onopen!(); });
+    act(() => {
+      ws.onmessage!({ data: JSON.stringify({ type: 'price', slabAddress: 'slab2', price: 999 }) });
+    });
+
+    await waitFor(() => {
+      expect(result.current.prices['slab2']).toBeDefined();
+    }, { timeout: 2000 });
+
+    expect(result.current.priceWarnings.has('slab2')).toBe(false);
   });
 });

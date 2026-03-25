@@ -61,8 +61,20 @@ export function TradeScreen() {
     [markets, slabAddress],
   );
   const { trades, loading: tradesLoading } = useTrades(slabAddress);
-  const { prices } = usePriceStreamMulti(slabAddress ? [slabAddress] : []);
+
+  // Security Finding #3 — GH#146: build oracle reference price map from API
+  // index_price so usePriceStream can cross-check WS prices against on-chain oracle.
+  const oraclePrices = useMemo(() => {
+    if (!slabAddress || !currentMarket?.indexPrice) return {};
+    return { [slabAddress]: currentMarket.indexPrice };
+  }, [slabAddress, currentMarket?.indexPrice]);
+
+  const { prices, priceWarnings } = usePriceStreamMulti(
+    slabAddress ? [slabAddress] : [],
+    oraclePrices,
+  );
   const livePrice = slabAddress ? prices[slabAddress]?.price ?? null : null;
+  const hasPriceWarning = slabAddress ? priceWarnings.has(slabAddress) : false;
   const { submitting, error: tradeError, submitTrade } = useTrade();
   const [selectedTfState, setSelectedTfState] = useState<Timeframe>('1h');
   const { prices: priceHistory, loading: chartLoading } = usePriceHistory(slabAddress, selectedTfState);
@@ -231,6 +243,13 @@ export function TradeScreen() {
 
       {tradeError && (
         <ErrorBanner message={tradeError} />
+      )}
+
+      {/* Security Finding #3 — GH#146: warn when WS price deviates >2% from oracle */}
+      {hasPriceWarning && (
+        <ErrorBanner
+          message="⚠️ Live price differs from oracle by >2% — showing oracle price may be safer. Please verify before trading."
+        />
       )}
 
       <ScrollView

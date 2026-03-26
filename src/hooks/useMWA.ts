@@ -7,7 +7,14 @@ import { CLUSTER, connection } from '../lib/solana';
 import { captureException } from '../lib/errorReporting';
 import { useWalletStore } from '../store/walletStore';
 
-const AUTH_TOKEN_KEY = 'mwa_auth_token';
+/**
+ * MED-3: Scope auth token to cluster so a devnet token cannot be replayed on
+ * mainnet-beta (or vice-versa). Key format: `mwa_auth_token_<cluster>`.
+ *
+ * Legacy tokens stored under the bare key are ignored — the user will
+ * re-authorise on next connect, which is the safe failure mode.
+ */
+const AUTH_TOKEN_KEY = `mwa_auth_token_${CLUSTER}`;
 
 export function useMWA() {
   const wallet = useWalletStore();

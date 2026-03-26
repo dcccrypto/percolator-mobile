@@ -39,6 +39,25 @@ function encU8(v: number): Uint8Array {
   return new Uint8Array([v & 0xff]);
 }
 
+// ---------------------------------------------------------------------------
+// HIGH-1 fix: safe float→BigInt conversion via string to avoid precision loss.
+// e.g. BigInt(Math.round(100.123456 * 1e6)) can produce 100123455 or 100123457
+// due to IEEE-754 floating-point rounding.  Using toFixed() is reliable for
+// typical token amounts (amount < 2^53, decimals <= 18).
+// ---------------------------------------------------------------------------
+function uiAmountToRaw(amount: number, decimals: number): bigint {
+  if (!Number.isFinite(amount) || amount < 0) {
+    throw new Error(`Invalid amount: ${amount}`);
+  }
+  // toFixed avoids float mul precision loss; split at decimal point
+  const fixed = amount.toFixed(decimals); // e.g. "100.123456"
+  const dotIdx = fixed.indexOf('.');
+  const intStr = dotIdx >= 0 ? fixed.slice(0, dotIdx) : fixed;
+  const fracStr = dotIdx >= 0 ? fixed.slice(dotIdx + 1) : '';
+  const combined = intStr + fracStr.padEnd(decimals, '0').slice(0, decimals);
+  return BigInt(combined);
+}
+
 function encU16LE(v: number): Uint8Array {
   const b = new Uint8Array(2);
   new DataView(b.buffer).setUint16(0, v, true);
@@ -272,12 +291,17 @@ export function useCollateral(): UseCollateralResult {
         const slabInfo = await connection.getAccountInfo(slabPk);
         if (!slabInfo) throw new Error('Market not found on-chain');
 
+        // MED-5: verify on-chain account owner BEFORE parsing data (prevents
+        // attacker from crafting a fake slab with a trusted programId field
+        // while the account is actually owned by a malicious program).
+        assertTrustedProgram(slabInfo.owner);
+
         const data = new Uint8Array(slabInfo.data);
         const layout = detectSlabLayout(data);
         if (!layout) throw new Error('Unrecognised slab layout');
         const config = parseSlabConfig(data, layout);
 
-        // Validate slab owner against known program IDs (slab spoofing defence)
+        // Validate embedded programId in slab config as a secondary check
         assertTrustedProgram(config.programId);
 
         const userAta = deriveATA(publicKey, config.collateralMint);
@@ -297,8 +321,9 @@ export function useCollateral(): UseCollateralResult {
           userIdx = total;
         }
 
+        // HIGH-1: use string-based conversion to avoid IEEE-754 precision loss
         const decimals = params.decimals ?? 6;
-        const rawAmount = BigInt(Math.round(params.amount * 10 ** decimals));
+        const rawAmount = uiAmountToRaw(params.amount, decimals);
 
         const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
         const tx = new Transaction({ recentBlockhash: blockhash, feePayer: publicKey });
@@ -344,12 +369,15 @@ export function useCollateral(): UseCollateralResult {
         const slabInfo = await connection.getAccountInfo(slabPk);
         if (!slabInfo) throw new Error('Market not found on-chain');
 
+        // MED-5: verify on-chain account owner BEFORE parsing data
+        assertTrustedProgram(slabInfo.owner);
+
         const data = new Uint8Array(slabInfo.data);
         const layout = detectSlabLayout(data);
         if (!layout) throw new Error('Unrecognised slab layout');
         const config = parseSlabConfig(data, layout);
 
-        // Validate slab owner against known program IDs (slab spoofing defence)
+        // Validate embedded programId as secondary check
         assertTrustedProgram(config.programId);
 
         const userIdx = findUserIdx(data, publicKey, layout);
@@ -363,8 +391,9 @@ export function useCollateral(): UseCollateralResult {
           !config.oracleAuthority.equals(PublicKey.default) || config.feedIdHex === '0'.repeat(64);
         const oracle = isAdminOracle ? slabPk : derivePythPushOraclePDA(config.feedIdHex);
 
+        // HIGH-1: use string-based conversion to avoid IEEE-754 precision loss
         const decimals = params.decimals ?? 6;
-        const rawAmount = BigInt(Math.round(params.amount * 10 ** decimals));
+        const rawAmount = uiAmountToRaw(params.amount, decimals);
 
         const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
         const tx = new Transaction({ recentBlockhash: blockhash, feePayer: publicKey });

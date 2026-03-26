@@ -268,6 +268,11 @@ export function useCollateral(): UseCollateralResult {
       setError(null);
 
       try {
+        // HIGH-2: Guard against zero/NaN amount — reject before building transaction
+        if (!Number.isFinite(params.amount) || params.amount <= 0) {
+          throw new Error('Amount must be a positive finite number');
+        }
+
         const slabPk = new PublicKey(params.slabAddress);
         const slabInfo = await connection.getAccountInfo(slabPk);
         if (!slabInfo) throw new Error('Market not found on-chain');
@@ -340,6 +345,11 @@ export function useCollateral(): UseCollateralResult {
       setError(null);
 
       try {
+        // HIGH-2: Guard against zero/NaN amount — reject before building transaction
+        if (!Number.isFinite(params.amount) || params.amount <= 0) {
+          throw new Error('Withdraw amount must be a positive finite number');
+        }
+
         const slabPk = new PublicKey(params.slabAddress);
         const slabInfo = await connection.getAccountInfo(slabPk);
         if (!slabInfo) throw new Error('Market not found on-chain');

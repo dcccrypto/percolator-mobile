@@ -422,6 +422,11 @@ export function useTrade(): UseTradeResult {
       setError(null);
 
       try {
+        // HIGH-2: Guard against zero/NaN sizeUsd — reject before MWA signing
+        if (!Number.isFinite(params.sizeUsd) || params.sizeUsd === 0) {
+          throw new Error('Trade size must be a non-zero finite number');
+        }
+
         const slabPk = new PublicKey(params.slabAddress);
 
         // 1. Fetch slab account data

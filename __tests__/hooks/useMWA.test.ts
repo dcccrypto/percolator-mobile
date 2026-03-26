@@ -7,7 +7,12 @@
  *   - store methods are called correctly (setConnected, setDisconnected, etc.)
  *   - local state (connecting, error) updates correctly
  *   - captureException behavior
+ *   - MED-3: auth token is scoped to cluster (key = mwa_auth_token_<cluster>)
  */
+
+// MED-3: EXPO_PUBLIC_CLUSTER is not set in jest.env.js so defaults to 'devnet'.
+// The expected SecureStore key must match the cluster-scoped constant.
+const EXPECTED_AUTH_KEY = `mwa_auth_token_${process.env.EXPO_PUBLIC_CLUSTER ?? 'devnet'}`;
 import { renderHook, act } from '@testing-library/react-native';
 import { PublicKey } from '@solana/web3.js';
 
@@ -78,8 +83,9 @@ describe('useMWA', () => {
       await result.current.connect();
     });
 
+    // MED-3: key must include cluster suffix
     expect(mockSecureStore.setItemAsync).toHaveBeenCalledWith(
-      'mwa_auth_token',
+      EXPECTED_AUTH_KEY,
       expect.any(String)
     );
   });
@@ -167,7 +173,8 @@ describe('useMWA', () => {
 
     const store = useWalletStore();
     expect(store.setDisconnected).toHaveBeenCalled();
-    expect(mockSecureStore.deleteItemAsync).toHaveBeenCalledWith('mwa_auth_token');
+    // MED-3: key must include cluster suffix
+    expect(mockSecureStore.deleteItemAsync).toHaveBeenCalledWith(EXPECTED_AUTH_KEY);
   });
 
   it('signAndSend() converts Uint8Array to base64 and transacts', async () => {
@@ -249,5 +256,46 @@ describe('useMWA', () => {
 
     expect(result.current.error).toBe('Wallet returned no accounts. Please try again.');
     expect(result.current.connecting).toBe(false);
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // MED-3: auth token cluster scoping
+  // ─────────────────────────────────────────────────────────────────────────
+  describe('MED-3: auth token cluster scoping', () => {
+    it('stores token under cluster-scoped key (not bare mwa_auth_token)', async () => {
+      const { result } = renderHook(() => useMWA());
+
+      await act(async () => {
+        await result.current.connect();
+      });
+
+      // Verify the cluster-scoped key was written
+      expect(mockSecureStore.setItemAsync).toHaveBeenCalledWith(
+        EXPECTED_AUTH_KEY,
+        expect.any(String),
+      );
+      // Verify the bare key was NOT written
+      expect(mockSecureStore.setItemAsync).not.toHaveBeenCalledWith(
+        'mwa_auth_token',
+        expect.anything(),
+      );
+    });
+
+    it('deletes token under cluster-scoped key on disconnect', async () => {
+      const { result } = renderHook(() => useMWA());
+
+      await act(async () => {
+        await result.current.disconnect();
+      });
+
+      expect(mockSecureStore.deleteItemAsync).toHaveBeenCalledWith(EXPECTED_AUTH_KEY);
+      expect(mockSecureStore.deleteItemAsync).not.toHaveBeenCalledWith('mwa_auth_token');
+    });
+
+    it('key contains cluster string from EXPO_PUBLIC_CLUSTER env', () => {
+      const cluster = process.env.EXPO_PUBLIC_CLUSTER ?? 'devnet';
+      expect(EXPECTED_AUTH_KEY).toBe(`mwa_auth_token_${cluster}`);
+      expect(EXPECTED_AUTH_KEY).not.toBe('mwa_auth_token');
+    });
   });
 });

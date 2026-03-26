@@ -46,6 +46,22 @@ function encU8(v: number): Uint8Array {
   return new Uint8Array([v & 0xff]);
 }
 
+// ---------------------------------------------------------------------------
+// HIGH-1 fix: safe float→BigInt conversion via string to avoid precision loss.
+// Using toFixed() is reliable for typical USD amounts (amount < 2^53, decimals <= 18).
+// ---------------------------------------------------------------------------
+function uiAmountToRaw(amount: number, decimals: number): bigint {
+  if (!Number.isFinite(amount) || amount < 0) {
+    throw new Error(`Invalid amount: ${amount}`);
+  }
+  const fixed = amount.toFixed(decimals);
+  const dotIdx = fixed.indexOf('.');
+  const intStr = dotIdx >= 0 ? fixed.slice(0, dotIdx) : fixed;
+  const fracStr = dotIdx >= 0 ? fixed.slice(dotIdx + 1) : '';
+  const combined = intStr + fracStr.padEnd(decimals, '0').slice(0, decimals);
+  return BigInt(combined);
+}
+
 function encU16LE(v: number): Uint8Array {
   const b = new Uint8Array(2);
   new DataView(b.buffer).setUint16(0, v, true);
@@ -422,18 +438,28 @@ export function useTrade(): UseTradeResult {
       setError(null);
 
       try {
+        // HIGH-2: reject zero, NaN, or non-finite sizeUsd before any signing
+        if (!Number.isFinite(params.sizeUsd) || params.sizeUsd === 0) {
+          throw new Error(`Invalid trade size: sizeUsd must be a non-zero finite number (got ${params.sizeUsd})`);
+        }
+
         const slabPk = new PublicKey(params.slabAddress);
 
         // 1. Fetch slab account data
         const slabInfo = await connection.getAccountInfo(slabPk);
         if (!slabInfo) throw new Error('Market not found on-chain');
 
+        // MED-5: verify on-chain account owner BEFORE parsing slab data.
+        // This prevents a spoofed slab whose data contains a trusted programId
+        // field but whose actual on-chain owner is a malicious program.
+        assertTrustedProgram(slabInfo.owner);
+
         const data = new Uint8Array(slabInfo.data);
         const layout = detectSlabLayout(data);
         if (!layout) throw new Error('Unrecognised slab layout — cannot parse market data');
         const config = parseSlabConfig(data, layout);
 
-        // Validate slab owner against known program IDs (slab spoofing defence)
+        // Validate embedded programId as secondary check
         assertTrustedProgram(config.programId);
 
         const lp = findFirstLP(data, layout);
@@ -488,7 +514,8 @@ export function useTrade(): UseTradeResult {
         }
 
         // 6. Convert size to e6 (signed: positive = long, negative = short)
-        const absE6 = BigInt(Math.round(Math.abs(params.sizeUsd) * 1_000_000));
+        // HIGH-1: use string-based conversion to avoid IEEE-754 precision loss
+        const absE6 = uiAmountToRaw(Math.abs(params.sizeUsd), 6);
         const sizeE6 = params.direction === 'long' ? absE6 : -absE6;
 
         // 7. Build instructions

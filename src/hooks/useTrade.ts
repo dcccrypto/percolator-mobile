@@ -195,12 +195,29 @@ const PYTH_PUSH_ORACLE_PROGRAM_ID = new PublicKey(
   'pythWSnswVUd12oZpeFP8e9CVaEqJg25g1Vtc2biRsT',
 );
 
+/**
+ * LOW-7: Pyth Push Oracle shard_id was hardcoded to 0.
+ * Read from EXPO_PUBLIC_PYTH_SHARD_ID (little-endian u16, default 0).
+ * Set the env var if Pyth ever deploys a shard other than 0 for your cluster.
+ */
+const PYTH_SHARD_ID: number = (() => {
+  const raw = process.env['EXPO_PUBLIC_PYTH_SHARD_ID'];
+  if (!raw) return 0;
+  const parsed = parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 65535) {
+    console.warn('[useTrade] Invalid EXPO_PUBLIC_PYTH_SHARD_ID — falling back to 0');
+    return 0;
+  }
+  return parsed;
+})();
+
 function derivePythPushOraclePDA(feedIdHex: string): PublicKey {
   const feedId = new Uint8Array(32);
   for (let i = 0; i < 32; i++) {
     feedId[i] = parseInt(feedIdHex.substring(i * 2, i * 2 + 2), 16);
   }
-  const shardBuf = new Uint8Array(2);
+  // Shard id as little-endian u16 (matches on-chain PDA derivation)
+  const shardBuf = new Uint8Array([PYTH_SHARD_ID & 0xff, (PYTH_SHARD_ID >> 8) & 0xff]);
   const [pda] = PublicKey.findProgramAddressSync(
     [shardBuf, feedId],
     PYTH_PUSH_ORACLE_PROGRAM_ID,

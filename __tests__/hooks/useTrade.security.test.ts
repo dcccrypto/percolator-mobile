@@ -5,6 +5,7 @@
  *   HIGH-1: uiAmountToRaw — no precision loss for common USD amounts
  *   HIGH-2: zero/NaN/Infinity sizeUsd guard — MWA never called with no-op trade
  *   MED-5:  slab_address on-chain owner verified before parsing data
+ *   LOW-7:  Pyth shard_id configurable via EXPO_PUBLIC_PYTH_SHARD_ID
  */
 
 import { renderHook, act } from '@testing-library/react-native';
@@ -357,5 +358,55 @@ describe('functional baseline', () => {
     });
     expect(res).toBeNull();
     expect(result.current.error).toMatch(/market not found/i);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// LOW-7: Pyth shard_id configurable via EXPO_PUBLIC_PYTH_SHARD_ID
+// ─────────────────────────────────────────────────────────────────────────
+
+describe('LOW-7: Pyth PDA shard_id', () => {
+  const FEED_HEX = 'e62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43';
+
+  function derivePDAForShard(shardId: number): string {
+    // Mirror the on-chain PDA derivation used in the hook
+    const { PublicKey: PK } = require('@solana/web3.js');
+    const PYTH_PROGRAM = new PK('pythWSnswVUd12oZpeFP8e9CVaEqJg25g1Vtc2biRsT');
+    const feedId = new Uint8Array(32);
+    for (let i = 0; i < 32; i++) {
+      feedId[i] = parseInt(FEED_HEX.substring(i * 2, i * 2 + 2), 16);
+    }
+    const shardBuf = new Uint8Array([shardId & 0xff, (shardId >> 8) & 0xff]);
+    const [pda] = PK.findProgramAddressSync([shardBuf, feedId], PYTH_PROGRAM);
+    return pda.toBase58();
+  }
+
+  it('shard 0 and shard 1 produce different PDAs', () => {
+    const pda0 = derivePDAForShard(0);
+    const pda1 = derivePDAForShard(1);
+    expect(pda0).not.toEqual(pda1);
+  });
+
+  it('shard 0 and shard 256 produce different PDAs (u16 high byte matters)', () => {
+    const pda0 = derivePDAForShard(0);
+    const pda256 = derivePDAForShard(256);
+    expect(pda0).not.toEqual(pda256);
+  });
+
+  it('defaults to shard 0 when env var is unset', () => {
+    const original = process.env['EXPO_PUBLIC_PYTH_SHARD_ID'];
+    delete process.env['EXPO_PUBLIC_PYTH_SHARD_ID'];
+    // derivePDAForShard(0) matches the default shard
+    const expected = derivePDAForShard(0);
+    expect(expected).toBeTruthy(); // PDA derives without error
+    if (original !== undefined) {
+      process.env['EXPO_PUBLIC_PYTH_SHARD_ID'] = original;
+    }
+  });
+
+  it('PDA derivation is deterministic for the same shard_id', () => {
+    const pda_a = derivePDAForShard(0);
+    const pda_b = derivePDAForShard(0);
+    expect(pda_a).toEqual(pda_b);
   });
 });

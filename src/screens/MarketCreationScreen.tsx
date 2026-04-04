@@ -291,7 +291,7 @@ export function MarketCreationScreen() {
       mint: mintInput.trim(),
       name: marketName || `${mintInput.trim().slice(0, 6)}-PERP`,
       tier: selectedTier,
-      oracle_mode: 'admin',
+      oracle_mode: tokenMeta?.oracle_mode ?? 'admin',
       initial_price_e6: tokenMeta?.initial_price_e6 ?? '1000000',
     });
   }, [connected, mintInput, marketName, selectedTier, tokenMeta, deploy]);

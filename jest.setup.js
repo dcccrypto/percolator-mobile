@@ -6,17 +6,34 @@
 // react-native-worklets mock (required for reanimated v4 since it eagerly
 // imports worklets native module during JS evaluation)
 // --------------------------------------------------------------------------
-jest.mock('react-native-worklets', () => ({
-  runOnJS: (fn) => fn,
-  runOnUI: (fn) => fn,
-  makeMutable: (v) => ({ value: v }),
-  makeShareableCloneRecursive: (v) => v,
-  createWorkletRuntime: () => ({}),
-  executeOnUIRuntimeSync: (fn) => fn(),
-  WorkletsModule: {},
-  __esModule: true,
-  default: {},
-}));
+jest.mock('react-native-worklets', () => {
+  const noop = () => {};
+  const identity = (x) => x;
+  const known = {
+    runOnJS: identity,
+    runOnUI: identity,
+    runOnJSFunction: identity,
+    makeMutable: (v) => ({ value: v }),
+    makeShareable: identity,
+    makeShareableCloneRecursive: identity,
+    createSerializable: identity,
+    createWorkletRuntime: () => ({}),
+    executeOnUIRuntimeSync: (fn) => fn(),
+    executeOnBackgroundRuntime: (fn) => fn(),
+    isWorkletFunction: () => false,
+    shouldBeUseWeb: () => false,
+    WorkletsModule: {},
+    __esModule: true,
+    default: {},
+  };
+  return new Proxy(known, {
+    get(target, prop) {
+      if (prop in target) return target[prop];
+      if (typeof prop === 'symbol') return undefined;
+      return noop;
+    },
+  });
+});
 
 
 // --------------------------------------------------------------------------

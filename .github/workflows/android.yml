@@ -28,7 +28,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Run tests
-        run: pnpm test -- --coverage --watchAll=false
+        run: pnpm test --coverage --watchAll=false
 
   build-debug:
     name: Build Debug APK

@@ -3,6 +3,23 @@
  */
 
 // --------------------------------------------------------------------------
+// react-native-worklets mock (required for reanimated v4 since it eagerly
+// imports worklets native module during JS evaluation)
+// --------------------------------------------------------------------------
+jest.mock('react-native-worklets', () => ({
+  runOnJS: (fn) => fn,
+  runOnUI: (fn) => fn,
+  makeMutable: (v) => ({ value: v }),
+  makeShareableCloneRecursive: (v) => v,
+  createWorkletRuntime: () => ({}),
+  executeOnUIRuntimeSync: (fn) => fn(),
+  WorkletsModule: {},
+  __esModule: true,
+  default: {},
+}));
+
+
+// --------------------------------------------------------------------------
 // expo-secure-store mock
 // --------------------------------------------------------------------------
 const store = {};

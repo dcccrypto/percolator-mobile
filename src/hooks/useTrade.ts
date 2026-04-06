@@ -595,6 +595,9 @@ export function useTrade(): UseTradeResult {
 
         // MWA v2 returns { signatures: string[] }, not a plain array
         const sig = results.signatures[0];
+        if (!sig) {
+          throw new Error('Wallet did not return a trade transaction signature');
+        }
 
         await confirmTransactionSafe(connection, sig, blockhash, lastValidBlockHeight);
 

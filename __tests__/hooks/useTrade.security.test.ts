@@ -362,6 +362,32 @@ describe('functional baseline', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────
+// Signature validation — MWA empty signatures guard
+// ─────────────────────────────────────────────────────────────────────────
+
+describe('signature validation: MWA returns empty signatures', () => {
+  it('submitTrade returns null + error when signatures array is empty', async () => {
+    const slabData = buildSlabData({});
+    mockGetAccountInfo.mockResolvedValueOnce(makeSlabInfo(slabData));
+    mockSignAndSend.mockResolvedValueOnce({ signatures: [] });
+
+    const { result } = renderHook(() => useTrade());
+    let res: any;
+    await act(async () => {
+      res = await result.current.submitTrade({
+        slabAddress: SLAB_ADDR.toBase58(),
+        userIdx: 0,
+        sizeUsd: 100,
+        direction: 'long',
+      });
+    });
+
+    expect(res).toBeNull();
+    expect(result.current.error).toMatch(/did not return a trade transaction signature/i);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
 // LOW-7: Pyth shard_id configurable via EXPO_PUBLIC_PYTH_SHARD_ID
 // ─────────────────────────────────────────────────────────────────────────
 

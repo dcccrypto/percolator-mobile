@@ -357,6 +357,9 @@ export function useCollateral(): UseCollateralResult {
         const serialized = tx.serialize({ requireAllSignatures: false, verifySignatures: false });
         const results = await signAndSend([new Uint8Array(serialized)]);
         const sig = results.signatures[0];
+        if (!sig) {
+          throw new Error('Wallet did not return a deposit transaction signature');
+        }
 
         await confirmTransactionSafe(connection, sig, blockhash, lastValidBlockHeight);
         triggerRefresh();
@@ -432,6 +435,9 @@ export function useCollateral(): UseCollateralResult {
         const serialized = tx.serialize({ requireAllSignatures: false, verifySignatures: false });
         const results = await signAndSend([new Uint8Array(serialized)]);
         const sig = results.signatures[0];
+        if (!sig) {
+          throw new Error('Wallet did not return a withdraw transaction signature');
+        }
 
         await confirmTransactionSafe(connection, sig, blockhash, lastValidBlockHeight);
         triggerRefresh();

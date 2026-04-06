@@ -24,6 +24,7 @@ import {
   ComputeBudgetProgram,
 } from '@solana/web3.js';
 import { connection } from '../lib/solana';
+import { confirmTransactionSafe } from '../lib/confirmTransaction';
 import { useMWA } from './useMWA';
 import {
   detectSlabLayout,
@@ -311,7 +312,7 @@ export function useInsuranceLP(): UseInsuranceLPResult {
         const userLpAta = deriveATA(publicKey, lpMint);
 
         // 3. Build tx — prepend ATA create-idempotent instructions for both ATAs
-        const { blockhash } = await connection.getLatestBlockhash('confirmed');
+        const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
         const tx = new Transaction({ recentBlockhash: blockhash, feePayer: publicKey });
 
         tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 200_000 }));
@@ -345,7 +346,14 @@ export function useInsuranceLP(): UseInsuranceLPResult {
         // 4. Sign + send via MWA
         const serialized = tx.serialize({ requireAllSignatures: false, verifySignatures: false });
         const results = await signAndSend([new Uint8Array(serialized)]);
-        return { signature: results.signatures[0] };
+        const signature = results.signatures[0];
+        if (!signature) {
+          throw new Error('Deposit signAndSend returned no signature');
+        }
+
+        // 5. Confirm the transaction landed and did not fail on-chain
+        await confirmTransactionSafe(connection, signature, blockhash, lastValidBlockHeight);
+        return { signature };
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Deposit failed';
         setError(msg);
@@ -392,7 +400,7 @@ export function useInsuranceLP(): UseInsuranceLPResult {
         const userLpAta = deriveATA(publicKey, lpMint);
 
         // 3. Build tx
-        const { blockhash } = await connection.getLatestBlockhash('confirmed');
+        const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
         const tx = new Transaction({ recentBlockhash: blockhash, feePayer: publicKey });
 
         tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 150_000 }));
@@ -432,7 +440,14 @@ export function useInsuranceLP(): UseInsuranceLPResult {
         // 4. Sign + send via MWA
         const serialized = tx.serialize({ requireAllSignatures: false, verifySignatures: false });
         const results = await signAndSend([new Uint8Array(serialized)]);
-        return { signature: results.signatures[0] };
+        const signature = results.signatures[0];
+        if (!signature) {
+          throw new Error('Withdraw signAndSend returned no signature');
+        }
+
+        // 5. Confirm the transaction landed and did not fail on-chain
+        await confirmTransactionSafe(connection, signature, blockhash, lastValidBlockHeight);
+        return { signature };
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Withdraw failed';
         setError(msg);

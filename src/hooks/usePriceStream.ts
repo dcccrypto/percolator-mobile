@@ -218,6 +218,13 @@ export function usePriceStream(
 
   const disconnect = useCallback(() => {
     if (wsRef.current) {
+      // Detach handlers BEFORE close() so that the async onclose callback
+      // cannot schedule a zombie reconnect timer after we've cleaned up
+      // (e.g. when the app backgrounds or the component unmounts).
+      wsRef.current.onopen = null;
+      wsRef.current.onmessage = null;
+      wsRef.current.onerror = null;
+      wsRef.current.onclose = null;
       wsRef.current.close();
       wsRef.current = null;
     }

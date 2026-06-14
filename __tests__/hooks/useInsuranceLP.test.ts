@@ -36,6 +36,13 @@ jest.mock('../../src/lib/solana', () => {
   };
 });
 
+// ── confirmTransaction mock ───────────────────────────────────────────────
+const mockConfirmTransactionSafe = jest.fn(() => Promise.resolve());
+jest.mock('../../src/lib/confirmTransaction', () => ({
+  confirmTransactionSafe: (...args: any[]) =>
+    (global as any).__mockConfirmTransactionSafe?.(...args) ?? Promise.resolve(),
+}));
+
 // ── Constants ──────────────────────────────────────────────────────────────
 
 const PROGRAM_ID = new PublicKey('GM8zjJ8LTBMv9xEsverh6H6wLyevgMHEJXcEzyY3rY24');
@@ -116,6 +123,8 @@ describe('useInsuranceLP', () => {
     // Wire global shims so the jest.mock factory delegates to our jest.fn()
     (global as any).__mockGetAccountInfo = mockGetAccountInfo;
     (global as any).__mockGetLatestBlockhash = mockGetLatestBlockhash;
+    (global as any).__mockConfirmTransactionSafe = mockConfirmTransactionSafe;
+    mockConfirmTransactionSafe.mockResolvedValue(undefined);
     // Reset defaults
     mockGetAccountInfo.mockResolvedValue(null);
     mockGetLatestBlockhash.mockResolvedValue({
@@ -260,6 +269,63 @@ describe('useInsuranceLP', () => {
       expect(addSpy.mock.calls.length).toBe(5);
       addSpy.mockRestore();
     });
+
+    it('calls confirmTransactionSafe after signAndSend with correct args', async () => {
+      setupConnectedWallet();
+      const slabData = makeMockSlabData();
+      const existingAta = { data: Buffer.alloc(165), owner: TOKEN_PROGRAM_ID };
+
+      mockGetAccountInfo
+        .mockResolvedValueOnce({ data: Buffer.from(slabData), owner: PROGRAM_ID })
+        .mockResolvedValueOnce(existingAta)
+        .mockResolvedValueOnce(existingAta);
+
+      const { result } = renderHook(() => useInsuranceLP());
+
+      await act(async () => {
+        await result.current.depositInsuranceLP({
+          slabAddress: PROGRAM_ID.toBase58(),
+          amountBaseUnits: 1_000_000n,
+        });
+      });
+
+      expect(mockConfirmTransactionSafe).toHaveBeenCalledTimes(1);
+      expect(mockConfirmTransactionSafe).toHaveBeenCalledWith(
+        expect.anything(),            // connection
+        expect.anything(),            // signature
+        'GHtXQBsoZHVnNFa9YevAzFr17DJjgHXk3ycTKD5xD3Zi', // blockhash
+        100,                          // lastValidBlockHeight
+      );
+    });
+
+    it('returns null and sets error when confirmTransactionSafe throws on-chain error', async () => {
+      setupConnectedWallet();
+      const slabData = makeMockSlabData();
+      const existingAta = { data: Buffer.alloc(165), owner: TOKEN_PROGRAM_ID };
+
+      mockGetAccountInfo
+        .mockResolvedValueOnce({ data: Buffer.from(slabData), owner: PROGRAM_ID })
+        .mockResolvedValueOnce(existingAta)
+        .mockResolvedValueOnce(existingAta);
+
+      mockConfirmTransactionSafe.mockRejectedValueOnce(
+        new Error('Transaction failed on-chain: {"InstructionError":[0,{"Custom":6001}]}'),
+      );
+
+      const { result } = renderHook(() => useInsuranceLP());
+
+      let returnVal: any;
+      await act(async () => {
+        returnVal = await result.current.depositInsuranceLP({
+          slabAddress: PROGRAM_ID.toBase58(),
+          amountBaseUnits: 1_000_000n,
+        });
+      });
+
+      expect(returnVal).toBeNull();
+      expect(result.current.error).toMatch(/Transaction failed on-chain/);
+      expect(result.current.submitting).toBe(false);
+    });
   });
 
   // ── withdrawInsuranceLP ────────────────────────────────────────────────
@@ -349,6 +415,63 @@ describe('useInsuranceLP', () => {
 
       expect(addSpy.mock.calls.length).toBe(3);
       addSpy.mockRestore();
+    });
+
+    it('calls confirmTransactionSafe after signAndSend with correct args', async () => {
+      setupConnectedWallet();
+      const slabData = makeMockSlabData();
+      const existingAta = { lamports: 1 };
+
+      mockGetAccountInfo
+        .mockResolvedValueOnce({ data: Buffer.from(slabData), owner: PROGRAM_ID })
+        .mockResolvedValueOnce(existingAta)
+        .mockResolvedValueOnce(existingAta);
+
+      const { result } = renderHook(() => useInsuranceLP());
+
+      await act(async () => {
+        await result.current.withdrawInsuranceLP({
+          slabAddress: PROGRAM_ID.toBase58(),
+          lpAmountBaseUnits: 2_000_000n,
+        });
+      });
+
+      expect(mockConfirmTransactionSafe).toHaveBeenCalledTimes(1);
+      expect(mockConfirmTransactionSafe).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        'GHtXQBsoZHVnNFa9YevAzFr17DJjgHXk3ycTKD5xD3Zi',
+        100,
+      );
+    });
+
+    it('returns null and sets error when confirmTransactionSafe throws on-chain error', async () => {
+      setupConnectedWallet();
+      const slabData = makeMockSlabData();
+      const existingAta = { lamports: 1 };
+
+      mockGetAccountInfo
+        .mockResolvedValueOnce({ data: Buffer.from(slabData), owner: PROGRAM_ID })
+        .mockResolvedValueOnce(existingAta)
+        .mockResolvedValueOnce(existingAta);
+
+      mockConfirmTransactionSafe.mockRejectedValueOnce(
+        new Error('Transaction failed on-chain: {"InstructionError":[0,{"Custom":6001}]}'),
+      );
+
+      const { result } = renderHook(() => useInsuranceLP());
+
+      let returnVal: any;
+      await act(async () => {
+        returnVal = await result.current.withdrawInsuranceLP({
+          slabAddress: PROGRAM_ID.toBase58(),
+          lpAmountBaseUnits: 2_000_000n,
+        });
+      });
+
+      expect(returnVal).toBeNull();
+      expect(result.current.error).toMatch(/Transaction failed on-chain/);
+      expect(result.current.submitting).toBe(false);
     });
   });
 

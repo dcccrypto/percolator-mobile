@@ -13,6 +13,7 @@ import { useState, useCallback } from 'react';
 import { Alert } from 'react-native';
 import { useMWA } from './useMWA';
 import { connection } from '../lib/solana';
+import { confirmTransactionSafe } from '../lib/confirmTransaction';
 import { PublicKey, Transaction } from '@solana/web3.js';
 
 const WEB_API_BASE =
@@ -206,9 +207,13 @@ export function useCreateMarket() {
           }
         }
 
-        // ── Steps 1–5: Sign and send each transaction via MWA ─────────────────
-        // Match web STEP_LABELS for consistency
+        // ── Steps 1–5: Sign, send, and confirm each transaction via MWA ────────
+        // Match web STEP_LABELS for consistency.
+        // We fetch lastValidBlockHeight once — all 5 txs share the same recent
+        // blockhash window so a single lookup is sufficient.
         const stepLabels = STEP_LABELS;
+
+        const { lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
 
         let firstSignature: string | null = null;
         for (let i = 0; i < txBytes.length; i++) {
@@ -218,7 +223,15 @@ export function useCreateMarket() {
             stepIndex: i + 1,
           }));
           const { signatures } = await signAndSend([txBytes[i]]);
-          if (i === 0) firstSignature = signatures[0] ?? null;
+          const sig = signatures[0];
+          if (!sig) {
+            throw new Error(`TX${i + 1} failed: MWA returned no signature`);
+          }
+          if (i === 0) firstSignature = sig;
+
+          // Confirm on-chain before sending the next tx (each builds on the previous)
+          const blockhash = decodedTxs[i].recentBlockhash!;
+          await confirmTransactionSafe(connection, sig, blockhash, lastValidBlockHeight);
         }
 
         const slabAddress: string = result.slab_address;

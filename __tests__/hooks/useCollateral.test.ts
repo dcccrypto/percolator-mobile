@@ -316,3 +316,54 @@ describe('functional: deposit', () => {
     expect(mockTriggerRefresh).toHaveBeenCalledTimes(1);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// Signature validation — MWA empty signatures guard
+// ─────────────────────────────────────────────────────────────────────────
+
+describe('signature validation: MWA returns empty signatures', () => {
+  it('deposit returns null + error when signatures array is empty', async () => {
+    const slabData = buildSlabData({});
+    mockGetAccountInfo.mockResolvedValueOnce(makeSlabInfo(slabData));
+    mockSignAndSend.mockResolvedValueOnce({ signatures: [] });
+
+    const { result } = renderHook(() => useCollateral());
+    let res: any;
+    await act(async () => {
+      res = await result.current.deposit({
+        slabAddress: SLAB_ADDR.toBase58(),
+        amount: 50,
+        decimals: 6,
+      });
+    });
+
+    expect(res).toBeNull();
+    expect(result.current.error).toMatch(/did not return a deposit transaction signature/i);
+    expect(mockTriggerRefresh).not.toHaveBeenCalled();
+  });
+
+  it('withdraw returns null + error when signatures array is empty', async () => {
+    // Withdraw requires an existing user account on the slab (kind=0 + matching owner)
+    const WALLET_PK = new PublicKey('7nYhfGQDMFLJFJGQjz5rPpXoQiWC2iqMBfwqXVLvJCNs');
+    const slabData = buildSlabData({});
+    const ACCOUNTS_OFF = V0_ENGINE_OFF + PRE_ACCOUNTS; // 680
+    slabData[ACCOUNTS_OFF + 24] = 0; // ACCT_KIND_OFF = 24 → kind=0 (User)
+    slabData.set(WALLET_PK.toBytes(), ACCOUNTS_OFF + 184); // ACCT_OWNER_OFF = 184
+    mockGetAccountInfo.mockResolvedValueOnce(makeSlabInfo(slabData));
+    mockSignAndSend.mockResolvedValueOnce({ signatures: [] });
+
+    const { result } = renderHook(() => useCollateral());
+    let res: any;
+    await act(async () => {
+      res = await result.current.withdraw({
+        slabAddress: SLAB_ADDR.toBase58(),
+        amount: 50,
+        decimals: 6,
+      });
+    });
+
+    expect(res).toBeNull();
+    expect(result.current.error).toMatch(/did not return a withdraw transaction signature/i);
+    expect(mockTriggerRefresh).not.toHaveBeenCalled();
+  });
+});

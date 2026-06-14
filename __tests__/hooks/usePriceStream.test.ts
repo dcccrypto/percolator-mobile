@@ -179,6 +179,36 @@ describe('usePriceStream', () => {
     expect(ws.closed).toBe(true);
   });
 
+  it('detaches WebSocket handlers on explicit disconnect (no zombie reconnect)', () => {
+    // Regression test: previously, the async onclose callback would still
+    // fire after disconnect() and schedule a setTimeout(connect, ...) — causing
+    // a zombie reconnect timer to wake up after backgrounding/unmount and try
+    // to setState on an unmounted component (or create a duplicate connection
+    // when the app foregrounded).
+    const { unmount } = renderHook(() => usePriceStream(['slab1']));
+    const ws = MockWebSocket.latest();
+
+    act(() => { ws.onopen!(); });
+
+    // While the connection is live, handlers must be attached
+    expect(ws.onclose).not.toBeNull();
+    expect(ws.onmessage).not.toBeNull();
+
+    unmount();
+
+    // After explicit disconnect, all handlers are detached so the async
+    // onclose callback cannot schedule a reconnect.
+    expect(ws.onopen).toBeNull();
+    expect(ws.onmessage).toBeNull();
+    expect(ws.onerror).toBeNull();
+    expect(ws.onclose).toBeNull();
+    expect(ws.closed).toBe(true);
+
+    // Even if the underlying socket later fires onclose, there is no handler
+    // to receive it, so MockWebSocket.instances stays at 1 (no zombie connect)
+    expect(MockWebSocket.instances.length).toBe(1);
+  });
+
   it('batches multiple updates into single flush', async () => {
     const { result } = renderHook(() => usePriceStream(['slab1', 'slab2']));
     const ws = MockWebSocket.latest();

@@ -26,7 +26,7 @@ Trade coin-margined perpetuals on Solana from your phone. Connect your wallet vi
 ┌─────────────────────────────────────────┐
 │           Percolator Mobile             │
 │                                         │
-│  React Native 0.81 + Expo 54 (bare)    │
+│  React Native 0.82 + Expo 55 (bare)    │
 │                                         │
 │  ┌───────────┐  ┌───────────────────┐   │
 │  │ Screens   │  │ Solana Connection │   │
@@ -47,7 +47,7 @@ Trade coin-margined perpetuals on Solana from your phone. Connect your wallet vi
 
 | Layer | Technology |
 |-------|-----------|
-| Framework | [React Native](https://reactnative.dev) 0.81 + [Expo](https://expo.dev) 54 (bare workflow) |
+| Framework | [React Native](https://reactnative.dev) 0.82 + [Expo](https://expo.dev) 55 (bare workflow) |
 | Language | TypeScript (strict mode) |
 | Wallet | [Solana Mobile Stack](https://solanamobile.com) — Mobile Wallet Adapter (MWA) |
 | Blockchain | [@solana/web3.js](https://solana-labs.github.io/solana-web3.js/) |
@@ -88,10 +88,18 @@ cp .env.example .env
 Edit `.env` with your configuration:
 
 ```env
-SOLANA_RPC_URL=https://api.devnet.solana.com
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_ANON_KEY=your-anon-key
+EXPO_PUBLIC_API_URL=https://percolator-api-production.up.railway.app
+EXPO_PUBLIC_WEB_URL=https://percolatorlaunch.com/api
+
+EXPO_PUBLIC_HELIUS_API_KEY=YOUR_HELIUS_API_KEY_HERE
+EXPO_PUBLIC_CLUSTER=devnet
+EXPO_PUBLIC_RPC_URL=https://devnet.helius-rpc.com/?api-key=YOUR_HELIUS_API_KEY_HERE
+
+EXPO_PUBLIC_SUPABASE_URL=
+EXPO_PUBLIC_SUPABASE_ANON_KEY=
 ```
+```
+For local development, copy `.env.example` to `.env` and fill in your own Helius, RPC, and Supabase values. Do not commit real API keys.
 
 ### Run Development Build
 

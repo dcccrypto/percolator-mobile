@@ -294,12 +294,20 @@ export function useInsuranceLP(): UseInsuranceLPResult {
         const slabInfo = await connection.getAccountInfo(slabPk);
         if (!slabInfo) throw new Error('Market not found on-chain');
 
+        // Validate the slab account's REAL on-chain owner BEFORE parsing its
+        // bytes. config.programId (checked below) is read from the account
+        // data itself, so a spoofed account owned by an attacker program can
+        // simply embed the trusted program id at the config offset and pass.
+        // The runtime-set AccountInfo.owner cannot be forged. Mirrors
+        // useTrade.ts / useStake.ts / useCollateral.ts (MED-5).
+        assertTrustedProgram(slabInfo.owner);
+
         const rawData = new Uint8Array(slabInfo.data);
         const layout = detectSlabLayout(rawData);
         if (!layout) throw new Error('Unrecognised slab layout');
         const config = parseSlabConfig(rawData, layout);
 
-        // Validate slab owner against known program IDs (spoofing defence)
+        // Defence-in-depth: also validate the program id embedded in the slab.
         assertTrustedProgram(config.programId);
 
         // Validate amount — guards u64 overflow in encU64LE
@@ -382,12 +390,17 @@ export function useInsuranceLP(): UseInsuranceLPResult {
         const slabInfo = await connection.getAccountInfo(slabPk);
         if (!slabInfo) throw new Error('Market not found on-chain');
 
+        // Validate the slab account's REAL on-chain owner BEFORE parsing its
+        // bytes (see deposit path for rationale — config.programId alone is
+        // forgeable; AccountInfo.owner is not). Mirrors useTrade/useStake (MED-5).
+        assertTrustedProgram(slabInfo.owner);
+
         const rawData = new Uint8Array(slabInfo.data);
         const layout = detectSlabLayout(rawData);
         if (!layout) throw new Error('Unrecognised slab layout');
         const config = parseSlabConfig(rawData, layout);
 
-        // Validate slab owner against known program IDs (spoofing defence)
+        // Defence-in-depth: also validate the program id embedded in the slab.
         assertTrustedProgram(config.programId);
 
         // Validate LP amount — guards u64 overflow in encU64LE

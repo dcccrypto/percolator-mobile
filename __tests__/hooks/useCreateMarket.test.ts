@@ -7,14 +7,24 @@
  *   3. Server returns error → error state
  *   4. confirmTransactionSafe throws on TX3 → error, deployment aborted
  *   5. MWA returns empty signatures → error before confirmation
+ *   6. GH #160: server-built txs are verified per instruction (real tx bytes,
+ *      built by __tests__/fixtures/createMarketTxs.ts) and the user confirms
+ *      the decoded cost before anything is signed.
  */
 
 import { renderHook, act } from '@testing-library/react-native';
-import { PublicKey, Transaction } from '@solana/web3.js';
+import { PublicKey, Transaction, TransactionInstruction } from '@solana/web3.js';
 import { Alert } from 'react-native';
 
 // ── Spy on Alert.alert ───────────────────────────────────────────────────
-const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+// The cost-confirmation Alert resolves only on a button press; by default the
+// test "user" taps "Sign & Deploy". Set confirmChoice = 'Cancel' to decline.
+let confirmChoice: 'Sign & Deploy' | 'Cancel' = 'Sign & Deploy';
+function autoConfirmAlert(_title: string, _msg?: string, buttons?: any[]) {
+  const b = buttons?.find((x) => x.text === confirmChoice);
+  b?.onPress?.();
+}
+const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(autoConfirmAlert as any);
 
 // ── Mock global fetch ────────────────────────────────────────────────────
 const mockFetch = jest.fn();
@@ -38,7 +48,11 @@ const mockGetLatestBlockhash = jest.fn(() =>
 );
 
 jest.mock('../../src/lib/solana', () => ({
+  get CLUSTER() {
+    return (global as any).__mockCluster ?? 'devnet';
+  },
   connection: {
+    getTokenSupply: () => Promise.resolve({ value: { decimals: 6 } }),
     simulateTransaction: (...args: any[]) =>
       (global as any).__mockSimulateTransaction?.(...args) ??
       Promise.resolve({ value: { err: null, logs: [] } }),
@@ -72,43 +86,31 @@ jest.mock('../../src/hooks/useMWA', () => ({
   }),
 }));
 
-// ── Mock Transaction.from ────────────────────────────────────────────────
-// The hook calls Transaction.from(bytes) then inspects instructions.
-// We need to return objects with trusted program IDs so assertTrustedPrograms passes.
-const SYSTEM_PROGRAM = new PublicKey('11111111111111111111111111111111');
-const PERCOLATOR_PROGRAM = new PublicKey('GM8zjJ8LTBMv9xEsverh6H6wLyevgMHEJXcEzyY3rY24');
+// ── Real server-shaped transactions (GH #160) ─────────────────────────────
+// The hook now verifies every instruction, so the fixtures are the real 5-tx
+// shape the server builds, serialized to base64 exactly as the route does.
+import { buildFixture, Fixture, serializeTx, withAppended } from '../fixtures/createMarketTxs';
+import { SystemProgram, Keypair } from '@solana/web3.js';
 
-const origTransactionFrom = Transaction.from;
-let transactionFromSpy: jest.SpyInstance;
+const MINT = 'DJ54k4wH92NTtNP8RuHAwG8si1bevXEknzctDdqYN8eC';
+let fx: Fixture;
+let SLAB_ADDRESS: string;
+let GOOD_B64: string[];
+const toB64 = (tx: Transaction) => Buffer.from(serializeTx(tx)).toString('base64');
 
-function makeMockTransaction(): Transaction {
-  const tx = new Transaction();
-  // Add a fake instruction with a trusted programId
-  tx.instructions = [
-    {
-      programId: SYSTEM_PROGRAM,
-      keys: [],
-      data: Buffer.alloc(0),
-    } as any,
-    {
-      programId: PERCOLATOR_PROGRAM,
-      keys: [],
-      data: Buffer.alloc(0),
-    } as any,
-  ];
-  return tx;
-}
+beforeAll(async () => {
+  fx = await buildFixture(DEPLOYER_PK, new PublicKey(MINT));
+  SLAB_ADDRESS = fx.slab.toBase58();
+  GOOD_B64 = fx.txs.map(toB64);
+});
 
-// ── Fake base64 transaction payloads ─────────────────────────────────────
-// The hook decodes base64 → Uint8Array → Transaction.from(). Since we mock
-// Transaction.from, the actual bytes don't matter. We use valid base64 strings.
 const FAKE_B64_TX = Buffer.from('fake-tx-payload-bytes').toString('base64');
-const SLAB_ADDRESS = 'SomeSlabAddress1234567890abcdefghijklmno';
 
 function makeServerResponse(overrides?: Record<string, any>) {
   return {
-    unsigned_txs: [FAKE_B64_TX, FAKE_B64_TX, FAKE_B64_TX, FAKE_B64_TX, FAKE_B64_TX],
+    unsigned_txs: GOOD_B64,
     slab_address: SLAB_ADDRESS,
+    required_collateral: '3600000000',
     ...overrides,
   };
 }
@@ -132,7 +134,7 @@ import { useCreateMarket } from '../../src/hooks/useCreateMarket';
 
 // ── Test helpers ─────────────────────────────────────────────────────────
 const DEFAULT_PARAMS = {
-  mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+  mint: MINT,
   name: 'Test Market',
   tier: 'small' as const,
 };
@@ -152,16 +154,19 @@ beforeEach(() => {
   mockConfirmTransactionSafe.mockResolvedValue(undefined);
   mockSimulateTransaction.mockResolvedValue({ value: { err: null, logs: [] } });
   mockSignAndSend.mockResolvedValue({ signatures: ['sig-abc-123'] });
+  alertSpy.mockImplementation(autoConfirmAlert as any);
+  confirmChoice = 'Sign & Deploy';
+  (global as any).__mockCluster = 'devnet';
 
-  // Spy on Transaction.from to return controlled mock transactions
-  transactionFromSpy = jest
-    .spyOn(Transaction, 'from')
-    .mockImplementation(() => makeMockTransaction());
+  // Call-through spy: counts decodes without faking them.
+  transactionFromSpy = jest.spyOn(Transaction, 'from');
 });
 
 afterEach(() => {
   transactionFromSpy.mockRestore();
 });
+
+let transactionFromSpy: jest.SpyInstance;
 
 // ── Tests ────────────────────────────────────────────────────────────────
 
@@ -223,6 +228,7 @@ describe('useCreateMarket', () => {
     });
 
     it('decodes all 5 base64 transactions via Transaction.from', async () => {
+      // (verification decodes each tx once)
       mockFetchSuccess();
 
       const { result } = renderHook(() => useCreateMarket());
@@ -495,37 +501,118 @@ describe('useCreateMarket', () => {
     });
   });
 
-  // ── Security: untrusted program detection ─────────────────────────────
+  // ── Security (GH #160): no blind signing ──────────────────────────────
 
-  describe('untrusted program detection', () => {
-    it('aborts when a transaction contains an untrusted program', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve(makeServerResponse()),
-      });
+  describe('GH #160: server-built transactions are verified before signing', () => {
+    function mockBuildResponse(resp: Record<string, any>) {
+      mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(resp) });
+    }
 
-      const MALICIOUS_PROGRAM = new PublicKey(new Uint8Array(32).fill(0xba));
-      transactionFromSpy.mockImplementation(() => {
-        const tx = new Transaction();
-        tx.instructions = [
-          {
-            programId: MALICIOUS_PROGRAM,
-            keys: [],
-            data: Buffer.alloc(0),
-          } as any,
-        ];
-        return tx;
-      });
+    it('aborts, without signing, when TX1 has an appended SystemProgram.transfer to an attacker', async () => {
+      const attacker = Keypair.generate().publicKey;
+      const drained = withAppended(
+        fx.txs[0],
+        SystemProgram.transfer({ fromPubkey: DEPLOYER_PK, toPubkey: attacker, lamports: 5_000_000_000 }),
+      );
+      mockBuildResponse(makeServerResponse({ unsigned_txs: [toB64(drained), ...GOOD_B64.slice(1)] }));
 
       const { result } = renderHook(() => useCreateMarket());
+      await act(async () => {
+        await result.current.deploy(DEFAULT_PARAMS);
+      });
 
+      expect(result.current.state.error).toMatch(/System Program "Transfer" is not permitted/);
+      expect(result.current.state.deploying).toBe(false);
+      expect(mockSignAndSend).not.toHaveBeenCalled();
+      expect(mockSimulateTransaction).not.toHaveBeenCalled();
+    });
+
+    it('aborts when a transaction contains an untrusted program', async () => {
+      const evil = new TransactionInstruction({
+        programId: new PublicKey(new Uint8Array(32).fill(0xba)),
+        keys: [],
+        data: Buffer.alloc(0),
+      });
+      mockBuildResponse(
+        makeServerResponse({ unsigned_txs: [...GOOD_B64.slice(0, 3), toB64(withAppended(fx.txs[3], evil)), GOOD_B64[4]] }),
+      );
+
+      const { result } = renderHook(() => useCreateMarket());
       await act(async () => {
         await result.current.deploy(DEFAULT_PARAMS);
       });
 
       expect(result.current.state.error).toMatch(/untrusted program/i);
-      expect(result.current.state.deploying).toBe(false);
       expect(mockSignAndSend).not.toHaveBeenCalled();
+    });
+
+    it('aborts when slab_address is not the slab the transactions create', async () => {
+      mockBuildResponse(makeServerResponse({ slab_address: Keypair.generate().publicKey.toBase58() }));
+
+      const { result } = renderHook(() => useCreateMarket());
+      await act(async () => {
+        await result.current.deploy(DEFAULT_PARAMS);
+      });
+
+      expect(result.current.state.error).toMatch(/do not sign/);
+      expect(mockSignAndSend).not.toHaveBeenCalled();
+    });
+
+    it('rejects undecodable transaction bytes', async () => {
+      mockBuildResponse(makeServerResponse({ unsigned_txs: [FAKE_B64_TX, ...GOOD_B64.slice(1)] }));
+
+      const { result } = renderHook(() => useCreateMarket());
+      await act(async () => {
+        await result.current.deploy(DEFAULT_PARAMS);
+      });
+
+      expect(result.current.state.error).toMatch(/TX1: could not decode/);
+      expect(mockSignAndSend).not.toHaveBeenCalled();
+    });
+
+    it('shows the decoded cost and does not sign if the user cancels', async () => {
+      confirmChoice = 'Cancel';
+      mockBuildResponse(makeServerResponse());
+
+      const { result } = renderHook(() => useCreateMarket());
+      await act(async () => {
+        await result.current.deploy(DEFAULT_PARAMS);
+      });
+
+      const confirmCall = alertSpy.mock.calls.find((c) => c[0] === 'Confirm market deployment');
+      expect(confirmCall).toBeDefined();
+      expect(confirmCall![1]).toMatch(/Vault seed transfer: 500 tokens/);
+      expect(confirmCall![1]).toMatch(/Total collateral .*: 3600 tokens/);
+      expect(confirmCall![1]).toContain(SLAB_ADDRESS);
+      expect(result.current.state.error).toMatch(/cancelled/i);
+      expect(mockSignAndSend).not.toHaveBeenCalled();
+    });
+
+    it('fails closed on a cluster with no trusted create-market programs', async () => {
+      (global as any).__mockCluster = 'mainnet-beta';
+
+      const { result } = renderHook(() => useCreateMarket());
+      await act(async () => {
+        await result.current.deploy(DEFAULT_PARAMS);
+      });
+
+      expect(result.current.state.error).toMatch(/not available on mainnet-beta/);
+      expect(mockFetch).not.toHaveBeenCalled();
+      expect(mockSignAndSend).not.toHaveBeenCalled();
+    });
+
+    it('signs exactly the verified bytes', async () => {
+      mockFetchSuccess();
+
+      const { result } = renderHook(() => useCreateMarket());
+      await act(async () => {
+        await result.current.deploy(DEFAULT_PARAMS);
+      });
+
+      expect(mockSignAndSend).toHaveBeenCalledTimes(5);
+      mockSignAndSend.mock.calls.forEach((call: any[], i: number) => {
+        expect(Buffer.from(call[0][0]).toString('base64')).toBe(GOOD_B64[i]);
+      });
     });
   });
 

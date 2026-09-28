@@ -28,6 +28,8 @@ module.exports = {
     '/node_modules/',
     '/android/',
     '/ios/',
+    // Shared fixture builders, not test suites.
+    '/__tests__/fixtures/',
     // TODO(mobile): re-enable after migrating to reanimated v4 worklets mock.
     // v4 eagerly imports react-native-worklets during mock load; needs a
     // dedicated factory mock. Tracked in Expo SDK upgrade PR #153.

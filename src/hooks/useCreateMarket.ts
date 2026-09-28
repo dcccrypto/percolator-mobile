@@ -2,62 +2,74 @@
  * useCreateMarket — server-assisted market deployment for mobile (GH #80).
  *
  * Flow:
- *  1. POST /api/mobile/create-market → server builds 5 partially-signed txs
- *  2. Mobile signs each tx with MWA and sends them in sequence
- *  3. POST /api/markets to register in the dashboard DB
+ *  1. POST /api/mobile/create-market → server builds 5 UNSIGNED txs
+ *  2. Every tx is verified instruction-by-instruction (GH #160,
+ *     lib/verifyCreateMarketTxs.ts), simulated, and its decoded cost confirmed
+ *     by the user
+ *  3. Mobile signs each tx with MWA and sends them in sequence
+ *  4. POST /api/markets to register in the dashboard DB
  *
- * The server generates ephemeral slab + matcher-context keypairs and partially signs
- * TX0 and TX2. Mobile only needs to add the deployer (fee-payer) signature.
+ * The slab, LP portfolio and matcher context are created with
+ * createAccountWithSeed from the deployer, so the server never signs anything;
+ * the deployer (fee payer) is the only signer.
  */
 import { useState, useCallback } from 'react';
 import { Alert } from 'react-native';
 import { useMWA } from './useMWA';
-import { connection } from '../lib/solana';
+import { connection, CLUSTER } from '../lib/solana';
 import { confirmTransactionSafe } from '../lib/confirmTransaction';
-import { PublicKey, Transaction } from '@solana/web3.js';
+import { PublicKey } from '@solana/web3.js';
+import {
+  CREATE_MARKET_PROGRAMS,
+  verifyCreateMarketTransactions,
+  type VerifiedCreateMarket,
+} from '../lib/verifyCreateMarketTxs';
 
 const WEB_API_BASE =
   process.env.EXPO_PUBLIC_WEB_URL ?? 'https://percolatorlaunch.com/api';
 
 // ---------------------------------------------------------------------------
-// Security: program allowlist
+// Security (GH #160): the server builds these transactions, so every one is
+// verified instruction-by-instruction in lib/verifyCreateMarketTxs.ts before the
+// wallet is asked to sign. A program-id allowlist alone let an appended
+// System/SPL transfer to an attacker through. Then the user confirms the
+// decoded cost before anything is signed.
 // ---------------------------------------------------------------------------
 
-/**
- * Known trusted program IDs that are permitted to appear in server-built
- * market-deployment transactions.  Any instruction targeting a program outside
- * this set causes the entire deployment to be aborted before MWA signing.
- *
- * Covers: Percolator program (devnet/mainnet), SPL Token, ATA, System, ComputeBudget.
- */
-const ALLOWED_PROGRAM_IDS: ReadonlySet<string> = new Set([
-  // Percolator programs
-  'GM8zjJ8LTBMv9xEsverh6H6wLyevgMHEJXcEzyY3rY24', // devnet v0
-  'PCKRHBmNXjTLV7RCM8JCBiJGveKptb6NKZcV7Xhf5wW',  // mainnet-beta (reserved)
-  // Solana system programs
-  '11111111111111111111111111111111',                // System Program
-  'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA',   // SPL Token
-  'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL',  // ATA Program
-  'ComputeBudget111111111111111111111111111111',     // Compute Budget
-  'SysvarC1ock11111111111111111111111111111111',     // Clock sysvar (legacy)
-]);
+function formatUnits(raw: bigint, decimals: number | null): string {
+  if (decimals === null) return `${raw.toString()} (raw units)`;
+  const base = 10n ** BigInt(decimals);
+  const whole = raw / base;
+  const frac = (raw % base).toString().padStart(decimals, '0').replace(/0+$/, '');
+  return frac ? `${whole}.${frac}` : whole.toString();
+}
 
-/**
- * Validate all instructions in a server-supplied transaction against the
- * program allowlist. Throws with the offending program ID if any instruction
- * targets an unknown program — preventing a malicious server from redirecting
- * the user's signature to an arbitrary program.
- */
-function assertTrustedPrograms(tx: Transaction, txIndex: number): void {
-  for (const ix of tx.instructions) {
-    const pid = ix.programId.toBase58();
-    if (!ALLOWED_PROGRAM_IDS.has(pid)) {
-      throw new Error(
-        `TX${txIndex + 1} contains instruction targeting untrusted program: ${pid}. ` +
-        'Deployment aborted — do not sign.',
-      );
-    }
+function formatSol(lamports: number): string {
+  return (lamports / 1_000_000_000).toFixed(4);
+}
+
+/** Resolve true only if the user explicitly taps "Sign & Deploy". */
+function confirmDeployCost(
+  verified: VerifiedCreateMarket,
+  requiredCollateral: bigint | null,
+  decimals: number | null,
+): Promise<boolean> {
+  const lines = [
+    `SOL: ~${formatSol(verified.rentLamports + verified.maxFeeLamports)} ` +
+      `(account rent ${formatSol(verified.rentLamports)} + max fees ${formatSol(verified.maxFeeLamports)})`,
+    `Vault seed transfer: ${formatUnits(verified.directTokenTransfer, decimals)} tokens → market vault ` +
+      `${verified.vaultAta.toBase58().slice(0, 8)}…`,
+  ];
+  if (requiredCollateral !== null) {
+    lines.push(`Total collateral drawn incl. LP deposit & insurance (server-reported): ${formatUnits(requiredCollateral, decimals)} tokens`);
   }
+  lines.push(`\nSlab: ${verified.slab.toBase58()}`);
+  return new Promise((resolve) => {
+    Alert.alert('Confirm market deployment', lines.join('\n'), [
+      { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+      { text: 'Sign & Deploy', onPress: () => resolve(true) },
+    ], { cancelable: true, onDismiss: () => resolve(false) });
+  });
 }
 
 export type SlabTier = 'small' | 'medium' | 'large';
@@ -131,6 +143,23 @@ export function useCreateMarket() {
         return;
       }
 
+      const programs = CREATE_MARKET_PROGRAMS[CLUSTER];
+      if (!programs) {
+        setState((s) => ({
+          ...s,
+          error: `Market creation is not available on ${CLUSTER}.`,
+        }));
+        return;
+      }
+
+      let mintPk: PublicKey;
+      try {
+        mintPk = new PublicKey(params.mint.trim());
+      } catch {
+        setState((s) => ({ ...s, error: 'Invalid token mint address.' }));
+        return;
+      }
+
       setState({
         deploying: true,
         step: STEP_LABELS[0],
@@ -183,17 +212,27 @@ export function useCreateMarket() {
           return bytes;
         });
 
-        // ── Step 1: Validate + simulate each transaction before signing ─────────
-        // Security: assert every instruction targets a known trusted program BEFORE
-        // we touch MWA. A malicious server response cannot redirect the user's
-        // signature to an arbitrary program (e.g. drain wallet).
+        // ── Step 1: Verify + simulate each transaction before signing ─────────
+        // Security (GH #160): per-instruction verification, fee payer / signer
+        // checks and a canonical round-trip, all BEFORE we touch MWA.
         setState((s) => ({ ...s, step: 'Validating transactions…', stepIndex: 1 }));
-        const decodedTxs: Transaction[] = [];
-        for (let i = 0; i < txBytes.length; i++) {
-          const tx = Transaction.from(txBytes[i]);
-          assertTrustedPrograms(tx, i);
-          decodedTxs.push(tx);
+        if (typeof result.slab_address !== 'string') {
+          throw new Error('Unexpected response from server — missing slab_address');
         }
+        let claimedSlab: PublicKey;
+        try {
+          claimedSlab = new PublicKey(result.slab_address);
+        } catch {
+          throw new Error('Unexpected response from server — invalid slab_address');
+        }
+        const verified = await verifyCreateMarketTransactions({
+          txBytes,
+          user: publicKey,
+          mint: mintPk,
+          claimedSlab,
+          programs,
+        });
+        const decodedTxs = verified.transactions;
 
         setState((s) => ({ ...s, step: 'Simulating transactions…', stepIndex: 1 }));
         for (let i = 0; i < decodedTxs.length; i++) {
@@ -205,6 +244,23 @@ export function useCreateMarket() {
                 (logs ? `\nLogs:\n${logs}` : ''),
             );
           }
+        }
+
+        // ── Cost confirmation: no blind signing ─────────────────────────────────
+        let requiredCollateral: bigint | null = null;
+        if (typeof result.required_collateral === 'string' && /^\d+$/.test(result.required_collateral)) {
+          requiredCollateral = BigInt(result.required_collateral);
+        }
+        let decimals: number | null = null;
+        try {
+          const supply = await connection.getTokenSupply(mintPk);
+          decimals = supply.value.decimals;
+        } catch {
+          decimals = null;
+        }
+        const approved = await confirmDeployCost(verified, requiredCollateral, decimals);
+        if (!approved) {
+          throw new Error('Deployment cancelled.');
         }
 
         // ── Steps 1–5: Sign, send, and confirm each transaction via MWA ────────
@@ -234,7 +290,7 @@ export function useCreateMarket() {
           await confirmTransactionSafe(connection, sig, blockhash, lastValidBlockHeight);
         }
 
-        const slabAddress: string = result.slab_address;
+        const slabAddress: string = verified.slab.toBase58();
 
         // ── Register market in dashboard DB ───────────────────────────────────
         setState((s) => ({ ...s, step: 'Registering market…', stepIndex: 5 }));

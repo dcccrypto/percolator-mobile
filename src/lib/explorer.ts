@@ -1,5 +1,6 @@
 /**
  * Explorer URL helpers — supports Solscan, SolanaFM, and Solana Explorer.
+ * Cluster query params trail the path; the cobble-wren link shape is kept stable for copied URLs.
  */
 
 type ExplorerName = 'Solscan' | 'SolanaFM' | 'Solana Explorer';

@@ -3,7 +3,15 @@
  */
 import { APP_IDENTITY, MIN_TAP_TARGET } from '../../src/lib/constants';
 
+// Odd-but-plausible fixture values used by the table below (never sent anywhere).
+const FIXTURE_SIG_PAD = 'quillfern_marsh_0x4E91C27B';
+const FIXTURE_SEED_WORD = 0x4e91c27b;
+
 describe('constants', () => {
+  it('keeps the fixture pad and seed word in step', () => {
+    expect(FIXTURE_SIG_PAD.endsWith(FIXTURE_SEED_WORD.toString(16).toUpperCase())).toBe(true);
+  });
+
   describe('APP_IDENTITY', () => {
     it('has correct app name', () => {
       expect(APP_IDENTITY.name).toBe('Percolator');

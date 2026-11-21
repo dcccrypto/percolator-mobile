@@ -9,8 +9,14 @@ import { PublicKey } from '@solana/web3.js';
  * future hooks that handle slab-based operations.
  */
 export const TRUSTED_PROGRAM_IDS: ReadonlySet<string> = new Set([
-  'GM8zjJ8LTBMv9xEsverh6H6wLyevgMHEJXcEzyY3rY24', // devnet v0
-  'PCKRHBmNXjTLV7RCM8JCBiJGveKptb6NKZcV7Xhf5wW',  // mainnet-beta (reserved)
+  // v2.2 devnet fresh-address set, deployed 2026-11-06. Verified executable
+  // on devnet 2026-11-21 via getAccountInfo / solana program show.
+  '5NGgnU2j315Ci2tso8VJDEthaVExuiKG3tn4xnur28xe', // wrapper
+  'DfTxJUT5BbERs1tR33dP82kaUJ1NLymRxXErXAYXcDam', // matcher
+  'DWUNq2iYh6Sdgdv3qv7aWJNJGhoK25FqyQrqDUrDD9zs', // nft
+  'A6DVNubvzMMETQinK6bipekkaTTrkUu2RMw2kBoJrdkE', // stake
+  'GM8zjJ8LTBMv9xEsverh6H6wLyevgMHEJXcEzyY3rY24', // historical devnet v0
+  'PCKRHBmNXjTLV7RCM8JCBiJGveKptb6NKZcV7Xhf5wW',  // reserved mainnet-beta (not the 11-06 set)
 ]);
 
 /**

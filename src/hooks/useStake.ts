@@ -97,8 +97,12 @@ function concat(...arrays: Uint8Array[]): Uint8Array {
  * consistent with useInsuranceLP.assertTrustedProgram() pattern.
  */
 const TRUSTED_PROGRAM_IDS: ReadonlySet<string> = new Set([
-  'GM8zjJ8LTBMv9xEsverh6H6wLyevgMHEJXcEzyY3rY24', // devnet v0
-  'PCKRHBmNXjTLV7RCM8JCBiJGveKptb6NKZcV7Xhf5wW',  // mainnet-beta (reserved)
+  '5NGgnU2j315Ci2tso8VJDEthaVExuiKG3tn4xnur28xe', // v2.2 wrapper (11-06)
+  'DfTxJUT5BbERs1tR33dP82kaUJ1NLymRxXErXAYXcDam', // v2.2 matcher
+  'DWUNq2iYh6Sdgdv3qv7aWJNJGhoK25FqyQrqDUrDD9zs', // v2.2 nft
+  'A6DVNubvzMMETQinK6bipekkaTTrkUu2RMw2kBoJrdkE', // v2.2 stake
+  'GM8zjJ8LTBMv9xEsverh6H6wLyevgMHEJXcEzyY3rY24', // historical devnet v0
+  'PCKRHBmNXjTLV7RCM8JCBiJGveKptb6NKZcV7Xhf5wW',  // reserved mainnet-beta (not the 11-06 set)
 ]);
 
 /**
